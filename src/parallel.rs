@@ -1,11 +1,9 @@
 //! Модуль для параллельной обработки оптимизации раскроя
 
-#[cfg(feature = "parallel")]
 use rayon::prelude::*;
-
-use crate::{types::*, CuttingAlgorithm, OptimizationConfig, Result};
-use std::sync::{Arc, Mutex};
 use crossbeam::channel;
+use crate::{types::*, CuttingAlgorithm, OptimizationConfig, Result};
+use std::sync::Arc;
 
 /// Параллельный оптимизатор раскроя
 pub struct ParallelOptimizer {
@@ -18,65 +16,42 @@ impl ParallelOptimizer {
         Self { config }
     }
 
-    /// Выполняет параллельную оптимизацию
-    #[cfg(feature = "parallel")]
+    /// Выполняет параллельную оптимизацию алгоритмов
     pub fn optimize(
         &self,
         material: &Material,
         requests: &[CuttingRequest],
         algorithms: &[Box<dyn CuttingAlgorithm>],
     ) -> Result<CuttingResult> {
-        // Настройка пула потоков
-        if let Some(max_threads) = self.config.max_threads {
-            rayon::ThreadPoolBuilder::new()
+        // Создаем локальный пул потоков если нужно
+        let result = if let Some(max_threads) = self.config.max_threads {
+            let pool = rayon::ThreadPoolBuilder::new()
                 .num_threads(max_threads)
-                .build_global()
+                .build()
                 .map_err(|e| OptimizationError::CalculationError(format!("Thread pool error: {}", e)))?;
-        }
 
-        // Параллельное выполнение различных алгоритмов
-        let results: Vec<_> = algorithms
-            .par_iter()
-            .map(|algorithm| {
-                algorithm.optimize(material, requests)
+            pool.install(|| {
+                algorithms
+                    .par_iter()
+                    .map(|algorithm| algorithm.optimize(material, requests))
+                    .collect::<Vec<_>>()
             })
-            .collect();
+        } else {
+            algorithms
+                .par_iter()
+                .map(|algorithm| algorithm.optimize(material, requests))
+                .collect::<Vec<_>>()
+        };
 
         // Выбираем лучший результат
         let mut best_result = None;
         let mut best_utilization = 0.0;
 
-        for result in results {
-            if let Ok(result) = result {
-                if result.total_utilization > best_utilization {
-                    best_utilization = result.total_utilization;
-                    best_result = Some(result);
-                }
-            }
-        }
-
-        best_result.ok_or(OptimizationError::CalculationError(
-            "No algorithm produced valid result".to_string(),
-        ))
-    }
-
-    /// Версия без поддержки параллельности
-    #[cfg(not(feature = "parallel"))]
-    pub fn optimize(
-        &self,
-        material: &Material,
-        requests: &[CuttingRequest],
-        algorithms: &[Box<dyn CuttingAlgorithm>],
-    ) -> Result<CuttingResult> {
-        // Последовательное выполнение алгоритмов
-        let mut best_result = None;
-        let mut best_utilization = 0.0;
-
-        for algorithm in algorithms {
-            if let Ok(result) = algorithm.optimize(material, requests) {
-                if result.total_utilization > best_utilization {
-                    best_utilization = result.total_utilization;
-                    best_result = Some(result);
+        for algorithm_result in result {
+            if let Ok(cutting_result) = algorithm_result {
+                if cutting_result.total_utilization > best_utilization {
+                    best_utilization = cutting_result.total_utilization;
+                    best_result = Some(cutting_result);
                 }
             }
         }
@@ -87,17 +62,30 @@ impl ParallelOptimizer {
     }
 
     /// Параллельная обработка множественных материалов
-    #[cfg(feature = "parallel")]
     pub fn optimize_multiple_materials(
         &self,
         materials: &[Material],
         requests: &[CuttingRequest],
         algorithm: &dyn CuttingAlgorithm,
     ) -> Result<Vec<CuttingResult>> {
-        let results: Vec<_> = materials
-            .par_iter()
-            .map(|material| algorithm.optimize(material, requests))
-            .collect();
+        let results = if let Some(max_threads) = self.config.max_threads {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(max_threads)
+                .build()
+                .map_err(|e| OptimizationError::CalculationError(format!("Thread pool error: {}", e)))?;
+
+            pool.install(|| {
+                materials
+                    .par_iter()
+                    .map(|material| algorithm.optimize(material, requests))
+                    .collect::<Vec<_>>()
+            })
+        } else {
+            materials
+                .par_iter()
+                .map(|material| algorithm.optimize(material, requests))
+                .collect::<Vec<_>>()
+        };
 
         let mut valid_results = Vec::new();
         for result in results {
@@ -115,34 +103,9 @@ impl ParallelOptimizer {
 
         Ok(valid_results)
     }
-
-    /// Версия для множественных материалов без параллельности
-    #[cfg(not(feature = "parallel"))]
-    pub fn optimize_multiple_materials(
-        &self,
-        materials: &[Material],
-        requests: &[CuttingRequest],
-        algorithm: &dyn CuttingAlgorithm,
-    ) -> Result<Vec<CuttingResult>> {
-        let mut valid_results = Vec::new();
-        
-        for material in materials {
-            if let Ok(result) = algorithm.optimize(material, requests) {
-                valid_results.push(result);
-            }
-        }
-
-        if valid_results.is_empty() {
-            return Err(OptimizationError::CalculationError(
-                "No valid results from multiple materials".to_string(),
-            ));
-        }
-
-        Ok(valid_results)
-    }
 }
 
-/// Структура для параллельной обработки большого количества деталей
+/// Структура для пакетной обработки большого количества деталей
 pub struct BatchProcessor {
     batch_size: usize,
 }
@@ -178,7 +141,6 @@ impl BatchProcessor {
     }
 
     /// Параллельная обработка пакетов
-    #[cfg(feature = "parallel")]
     pub fn process_batches_parallel(
         &self,
         material: &Material,
@@ -191,24 +153,6 @@ impl BatchProcessor {
             .par_iter()
             .map(|batch| algorithm.optimize(material, batch))
             .collect();
-
-        self.merge_batch_results(results)
-    }
-
-    /// Последовательная обработка пакетов
-    #[cfg(not(feature = "parallel"))]
-    pub fn process_batches_parallel(
-        &self,
-        material: &Material,
-        requests: &[CuttingRequest],
-        algorithm: &dyn CuttingAlgorithm,
-    ) -> Result<CuttingResult> {
-        let batches = self.split_into_batches(requests);
-        let mut results = Vec::new();
-
-        for batch in batches {
-            results.push(algorithm.optimize(material, &batch));
-        }
 
         self.merge_batch_results(results)
     }
@@ -240,8 +184,8 @@ impl BatchProcessor {
 
 /// Воркер для асинхронной обработки задач оптимизации
 pub struct OptimizationWorker {
-    receiver: channel::Receiver<OptimizationTask>,
-    sender: channel::Sender<OptimizationResult>,
+    receiver: crossbeam::channel::Receiver<OptimizationTask>,
+    sender: crossbeam::channel::Sender<OptimizationResult>,
 }
 
 /// Задача для оптимизации
@@ -262,9 +206,9 @@ pub struct OptimizationResult {
 
 impl OptimizationWorker {
     /// Создает новый воркер
-    pub fn new() -> (Self, channel::Sender<OptimizationTask>, channel::Receiver<OptimizationResult>) {
-        let (task_sender, task_receiver) = channel::unbounded();
-        let (result_sender, result_receiver) = channel::unbounded();
+    pub fn new() -> (Self, crossbeam::channel::Sender<OptimizationTask>, crossbeam::channel::Receiver<OptimizationResult>) {
+        let (task_sender, task_receiver) = crossbeam::channel::unbounded();
+        let (result_sender, result_receiver) = crossbeam::channel::unbounded();
 
         let worker = Self {
             receiver: task_receiver,
@@ -300,7 +244,6 @@ impl OptimizationWorker {
         task: &OptimizationTask,
         algorithms: &[Box<dyn CuttingAlgorithm>],
     ) -> Result<CuttingResult> {
-        // Находим нужный алгоритм по имени
         let algorithm = algorithms
             .iter()
             .find(|alg| alg.name() == task.algorithm_name)
@@ -334,7 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parallel_optimizer_creation() {
+    fn test_parallel_optimizer() {
         let config = OptimizationConfig::default();
         let optimizer = ParallelOptimizer::new(config);
         
