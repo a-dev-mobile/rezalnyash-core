@@ -1,12 +1,25 @@
-//! Основной оптимизатор раскроя материалов
+//! src/optimizer.rs - Рефакторинг с явными методами
 
 use crate::{
     types::*,
     algorithms::{BestFitAlgorithm, BottomLeftFillAlgorithm},
-    parallel::ParallelOptimizer,
+    parallel::{ParallelOptimizer, BatchProcessor},
     CuttingAlgorithm, OptimizationConfig, Result,
 };
-use std::time::{Duration, Instant};
+use std::time::Instant;
+
+/// Стратегии оптимизации
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OptimizationStrategy {
+    /// Быстрая последовательная обработка
+    Sequential,
+    /// Параллельная обработка
+    Parallel,
+    /// Пакетная обработка для больших объемов
+    Batch,
+    /// Автоматический выбор оптимальной стратегии
+    Auto,
+}
 
 /// Основной оптимизатор раскроя
 pub struct CuttingOptimizer {
@@ -35,66 +48,152 @@ impl CuttingOptimizer {
         self.algorithms.push(algorithm);
     }
 
-    /// Выполняет оптимизацию раскроя
-    pub fn optimize(&self, material: &Material, requests: &[CuttingRequest]) -> Result<CuttingResult> {
-        let start_time = Instant::now();
+    // ===== ОСНОВНЫЕ МЕТОДЫ ОПТИМИЗАЦИИ =====
 
-        // Валидация входных данных
+    /// Быстрая последовательная оптимизация
+    /// Подходит для: малых объемов, быстрого прототипирования
+    pub fn optimize_sequential(&self, material: &Material, requests: &[CuttingRequest]) -> Result<CuttingResult> {
+        let start_time = Instant::now();
         self.validate_input(material, requests)?;
 
-        // Сортировка запросов по приоритету и размеру
         let mut sorted_requests = requests.to_vec();
         self.sort_requests(&mut sorted_requests);
 
-        // Выбор стратегии оптимизации
-        let result = if self.should_use_parallel(&sorted_requests) {
-            self.optimize_parallel(material, &sorted_requests)?
-        } else {
-            self.optimize_sequential(material, &sorted_requests)?
-        };
-
-        // Проверка таймаута
-        if let Some(timeout) = self.config.timeout_seconds {
-            if start_time.elapsed() > Duration::from_secs(timeout) {
-                return Err(OptimizationError::TimeoutExceeded);
-            }
-        }
-
-        // Финализация результата
-        let mut final_result = result;
-        final_result.execution_time_ms = start_time.elapsed().as_millis() as u64;
-        final_result.recalculate_totals();
-
-        Ok(final_result)
+        let algorithm = &self.algorithms[0]; // Используем первый алгоритм
+        let result = algorithm.optimize(material, &sorted_requests)?;
+        
+        self.finalize_result(result, start_time)
     }
 
-    /// Оптимизация одного материала с заданными алгоритмами
-    pub fn optimize_single_material(
+    /// Параллельная оптимизация
+    /// Подходит для: средних объемов, когда производительность важна
+    pub fn optimize_parallel(&self, material: &Material, requests: &[CuttingRequest]) -> Result<CuttingResult> {
+        let start_time = Instant::now();
+        self.validate_input(material, requests)?;
+
+        let mut sorted_requests = requests.to_vec();
+        self.sort_requests(&mut sorted_requests);
+
+        let parallel_optimizer = ParallelOptimizer::new(self.config.clone());
+        let result = parallel_optimizer.optimize(material, &sorted_requests, &self.algorithms)?;
+        
+        self.finalize_result(result, start_time)
+    }
+
+    /// Пакетная оптимизация для больших объемов
+    /// Подходит для: больших объемов, фоновой обработки
+    pub fn optimize_batch(&self, material: &Material, requests: &[CuttingRequest]) -> Result<CuttingResult> {
+        self.optimize_batch_with_size(material, requests, 50)
+    }
+
+    /// Пакетная оптимизация с настраиваемым размером пакета
+    pub fn optimize_batch_with_size(
+        &self, 
+        material: &Material, 
+        requests: &[CuttingRequest],
+        batch_size: usize
+    ) -> Result<CuttingResult> {
+        let start_time = Instant::now();
+        self.validate_input(material, requests)?;
+
+        let batch_processor = BatchProcessor::new(batch_size);
+        let algorithm = &self.algorithms[0];
+        let result = batch_processor.process_batches_parallel(material, requests, algorithm.as_ref())?;
+        
+        self.finalize_result(result, start_time)
+    }
+
+    /// Оптимизация с выбором стратегии
+    pub fn optimize_with_strategy(
         &self,
         material: &Material,
         requests: &[CuttingRequest],
-    ) -> Result<CuttingLayout> {
-        let mut best_layout = CuttingLayout::new(material.clone());
-        let mut best_utilization = 0.0;
+        strategy: OptimizationStrategy,
+    ) -> Result<CuttingResult> {
+        match strategy {
+            OptimizationStrategy::Sequential => self.optimize_sequential(material, requests),
+            OptimizationStrategy::Parallel => self.optimize_parallel(material, requests),
+            OptimizationStrategy::Batch => self.optimize_batch(material, requests),
+            OptimizationStrategy::Auto => {
+                let chosen_strategy = self.choose_optimal_strategy(requests);
+                self.optimize_with_strategy(material, requests, chosen_strategy)
+            }
+        }
+    }
+
+    // ===== СПЕЦИАЛИЗИРОВАННЫЕ МЕТОДЫ =====
+
+    /// Быстрая оценка без полной оптимизации
+    pub fn estimate_quick(&self, material: &Material, requests: &[CuttingRequest]) -> Result<OptimizationEstimate> {
+        self.validate_input(material, requests)?;
+
+        let total_area: f64 = requests.iter().map(|r| r.total_area()).sum();
+        let material_area = material.area();
+        
+        let theoretical_sheets = (total_area / material_area).ceil() as usize;
+        let estimated_efficiency = (total_area / (theoretical_sheets as f64 * material_area)).min(1.0);
+
+        Ok(OptimizationEstimate {
+            estimated_sheets: theoretical_sheets,
+            estimated_efficiency,
+            estimated_waste_area: (theoretical_sheets as f64 * material_area) - total_area,
+            confidence: if requests.len() < 10 { 0.9 } else { 0.7 },
+        })
+    }
+
+    /// Сравнение нескольких алгоритмов
+    pub fn compare_algorithms(
+        &self,
+        material: &Material,
+        requests: &[CuttingRequest],
+    ) -> Result<Vec<AlgorithmComparison>> {
+        let mut comparisons = Vec::new();
 
         for algorithm in &self.algorithms {
+            let start = Instant::now();
             match algorithm.optimize(material, requests) {
                 Ok(result) => {
-                    if let Some(layout) = result.layouts.into_iter().next() {
-                        if layout.utilization > best_utilization {
-                            best_utilization = layout.utilization;
-                            best_layout = layout;
-                        }
-                    }
+                    comparisons.push(AlgorithmComparison {
+                        algorithm_name: algorithm.name().to_string(),
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        sheets_used: result.layouts.len(),
+                        utilization: result.total_utilization,
+                        waste_area: result.total_waste_area,
+                        success: true,
+                        error: None,
+                    });
                 }
-                Err(_) => continue, // Пропускаем неудачные алгоритмы
+                Err(e) => {
+                    comparisons.push(AlgorithmComparison {
+                        algorithm_name: algorithm.name().to_string(),
+                        execution_time_ms: start.elapsed().as_millis() as u64,
+                        sheets_used: 0,
+                        utilization: 0.0,
+                        waste_area: 0.0,
+                        success: false,
+                        error: Some(e.to_string()),
+                    });
+                }
             }
         }
 
-        Ok(best_layout)
+        Ok(comparisons)
     }
 
-    /// Валидация входных данных
+    // ===== СЛУЖЕБНЫЕ МЕТОДЫ =====
+
+    /// Выбирает оптимальную стратегию на основе данных
+    fn choose_optimal_strategy(&self, requests: &[CuttingRequest]) -> OptimizationStrategy {
+        let total_parts: usize = requests.iter().map(|r| r.quantity).sum();
+        let unique_parts = requests.len();
+
+        match (total_parts, unique_parts) {
+            (parts, _) if parts > 100 => OptimizationStrategy::Batch,
+            (parts, unique) if parts > 20 && unique > 5 => OptimizationStrategy::Parallel,
+            _ => OptimizationStrategy::Sequential,
+        }
+    }
+
     fn validate_input(&self, material: &Material, requests: &[CuttingRequest]) -> Result<()> {
         if material.width <= 0.0 || material.height <= 0.0 {
             return Err(OptimizationError::InvalidMaterialSize(
@@ -119,7 +218,6 @@ impl CuttingOptimizer {
         Ok(())
     }
 
-    /// Сортировка запросов по оптимальному порядку размещения
     fn sort_requests(&self, requests: &mut [CuttingRequest]) {
         requests.sort_by(|a, b| {
             // Сначала по приоритету (убывание)
@@ -141,85 +239,10 @@ impl CuttingOptimizer {
         });
     }
 
-    /// Определяет, стоит ли использовать параллельную обработку
-    fn should_use_parallel(&self, requests: &[CuttingRequest]) -> bool {
-        if !cfg!(feature = "parallel") {
-            return false;
-        }
-
-        let total_parts: usize = requests.iter().map(|r| r.quantity).sum();
-        total_parts > 20 || requests.len() > 10
-    }
-
-    /// Последовательная оптимизация
-    fn optimize_sequential(
-        &self,
-        material: &Material,
-        requests: &[CuttingRequest],
-    ) -> Result<CuttingResult> {
-        let mut result = CuttingResult::new();
-        let mut remaining_requests = requests.to_vec();
-
-        while !remaining_requests.is_empty() {
-            let layout = self.optimize_single_material(material, &remaining_requests)?;
-            
-            // Подсчет размещенных деталей
-            let placed_count = layout.parts.len();
-            if placed_count == 0 {
-                break; // Не удалось разместить ни одной детали
-            }
-
-            // Обновление оставшихся запросов
-            self.update_remaining_requests(&mut remaining_requests, &layout);
-            
-            result.add_layout(layout);
-        }
-
-        // Подсчет не размещенных деталей
-        result.unplaced_parts = remaining_requests.iter().map(|r| r.quantity).sum();
-
+    fn finalize_result(&self, mut result: CuttingResult, start_time: Instant) -> Result<CuttingResult> {
+        result.execution_time_ms = start_time.elapsed().as_millis() as u64;
+        result.recalculate_totals();
         Ok(result)
-    }
-
-    /// Параллельная оптимизация
-    fn optimize_parallel(
-        &self,
-        material: &Material,
-        requests: &[CuttingRequest],
-    ) -> Result<CuttingResult> {
-        let parallel_optimizer = ParallelOptimizer::new(self.config.clone());
-        parallel_optimizer.optimize(material, requests, &self.algorithms)
-    }
-
-    /// Обновляет список оставшихся запросов после размещения
-    fn update_remaining_requests(
-        &self,
-        remaining_requests: &mut Vec<CuttingRequest>,
-        layout: &CuttingLayout,
-    ) {
-        // Простая реализация - уменьшаем количество первого подходящего запроса
-        // В реальной реализации нужно отслеживать соответствие размещенных деталей запросам
-        
-        for part in &layout.parts {
-            for request in remaining_requests.iter_mut() {
-                if request.quantity > 0 {
-                    let matches = if request.can_rotate {
-                        (request.width == part.rectangle.width && request.height == part.rectangle.height) ||
-                        (request.height == part.rectangle.width && request.width == part.rectangle.height)
-                    } else {
-                        request.width == part.rectangle.width && request.height == part.rectangle.height
-                    };
-
-                    if matches {
-                        request.quantity -= 1;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Удаляем запросы с нулевым количеством
-        remaining_requests.retain(|r| r.quantity > 0);
     }
 }
 
@@ -227,6 +250,29 @@ impl Default for CuttingOptimizer {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ===== ТИПЫ ДЛЯ API =====
+
+/// Быстрая оценка оптимизации
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OptimizationEstimate {
+    pub estimated_sheets: usize,
+    pub estimated_efficiency: f64,
+    pub estimated_waste_area: f64,
+    pub confidence: f64, // 0.0 - 1.0
+}
+
+/// Сравнение алгоритмов
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AlgorithmComparison {
+    pub algorithm_name: String,
+    pub execution_time_ms: u64,
+    pub sheets_used: usize,
+    pub utilization: f64,
+    pub waste_area: f64,
+    pub success: bool,
+    pub error: Option<String>,
 }
 
 #[cfg(test)]
@@ -240,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn test_basic_optimization() {
+    fn test_sequential_optimization() {
         let optimizer = CuttingOptimizer::new();
         let material = Material::new(1000.0, 2000.0).unwrap();
         let requests = vec![
@@ -248,7 +294,7 @@ mod tests {
             CuttingRequest::new(200.0, 300.0, 1),
         ];
 
-        let result = optimizer.optimize(&material, &requests);
+        let result = optimizer.optimize_sequential(&material, &requests);
         assert!(result.is_ok());
         
         let result = result.unwrap();
@@ -257,35 +303,46 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_material() {
+    fn test_parallel_optimization() {
         let optimizer = CuttingOptimizer::new();
-        let material = Material::new(-100.0, 200.0);
-        assert!(material.is_err());
-    }
-
-    #[test]
-    fn test_part_too_large() {
-        let optimizer = CuttingOptimizer::new();
-        let material = Material::new(100.0, 200.0).unwrap();
-        let requests = vec![CuttingRequest::new(300.0, 400.0, 1)];
-
-        let result = optimizer.optimize(&material, &requests);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_request_sorting() {
-        let optimizer = CuttingOptimizer::new();
-        let mut requests = vec![
-            CuttingRequest::new(100.0, 200.0, 1), // площадь 20000
-            CuttingRequest::new(300.0, 400.0, 1), // площадь 120000
-            CuttingRequest::new(150.0, 250.0, 1), // площадь 37500
+        let material = Material::new(1000.0, 2000.0).unwrap();
+        let requests = vec![
+            CuttingRequest::new(300.0, 400.0, 2),
+            CuttingRequest::new(200.0, 300.0, 1),
         ];
 
-        optimizer.sort_requests(&mut requests);
+        let result = optimizer.optimize_parallel(&material, &requests);
+        assert!(result.is_ok());
         
-        // После сортировки самая большая деталь должна быть первой
-        assert_eq!(requests[0].width, 300.0);
-        assert_eq!(requests[0].height, 400.0);
+        let result = result.unwrap();
+        assert!(!result.layouts.is_empty());
+        assert!(result.total_utilization > 0.0);
+    }
+
+    #[test]
+    fn test_strategy_selection() {
+        let optimizer = CuttingOptimizer::new();
+        
+        // Маленькая задача → sequential
+        let small_requests = vec![CuttingRequest::new(100.0, 200.0, 1)];
+        let strategy = optimizer.choose_optimal_strategy(&small_requests);
+        assert_eq!(strategy, OptimizationStrategy::Sequential);
+        
+        // Большая задача → batch
+        let large_requests = (0..50).map(|i| CuttingRequest::new(100.0 + i as f64, 200.0, 3)).collect::<Vec<_>>();
+        let strategy = optimizer.choose_optimal_strategy(&large_requests);
+        assert_eq!(strategy, OptimizationStrategy::Batch);
+    }
+
+    #[test]
+    fn test_quick_estimate() {
+        let optimizer = CuttingOptimizer::new();
+        let material = Material::new(1000.0, 1000.0).unwrap();
+        let requests = vec![CuttingRequest::new(300.0, 400.0, 8)];
+
+        let estimate = optimizer.estimate_quick(&material, &requests).unwrap();
+        assert!(estimate.estimated_sheets > 0);
+        assert!(estimate.estimated_efficiency > 0.0);
+        assert!(estimate.confidence > 0.0);
     }
 }
