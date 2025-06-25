@@ -3,16 +3,17 @@
 pub mod types;
 pub mod optimizer;
 pub mod algorithms;
-// pub mod parallel;
+pub mod parallel;
 
 pub use types::{Material, CuttingRequest, CuttingResult, CuttingLayout, Rectangle, OptimizationError};
 pub use optimizer::CuttingOptimizer;
-pub use algorithms::{BestFitAlgorithm, /* BottomLeftFillAlgorithm */};
+pub use algorithms::{BestFitAlgorithm,  BottomLeftFillAlgorithm };
 
 /// Результат выполнения операции оптимизации
 pub type Result<T> = std::result::Result<T, OptimizationError>;
 
 /// Основной интерфейс для оптимизации раскроя
+
 pub trait CuttingAlgorithm: Send + Sync {
     /// Выполняет оптимизацию раскроя для заданного материала и запросов
     fn optimize(&self, material: &Material, requests: &[CuttingRequest]) -> Result<CuttingResult>;
