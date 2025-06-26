@@ -1,4 +1,6 @@
-use crate::engine::stock::StockSolution;
+use crate::models::stock_solution::StockSolution;
+
+
 
 /// Result of stock solution generation
 #[derive(Debug, Clone)]

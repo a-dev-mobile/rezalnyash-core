@@ -3,6 +3,8 @@ pub mod optimizer;
 pub mod parallel;
 pub mod types;
 pub mod errors;
+pub mod logging;
+pub mod constants;
 
 
 

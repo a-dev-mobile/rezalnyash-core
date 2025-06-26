@@ -1,7 +1,7 @@
-//! Пример для отладки в однопоточном режиме
-//! Запуск: RAYON_NUM_THREADS=1 cargo run --example debug_single_thread
 
 use rezalnyas_core::{
+    log_debug, log_error, log_info, log_warn,
+    logging::{init_logging, LogConfig, LogLevel},
     CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy,
 };
 
@@ -13,6 +13,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|n| n.get())
             .unwrap_or(1)
     );
+
+    // Инициализация логирования
+    init_logging(LogConfig {
+        level: LogLevel::Debug,
+    })?;
+
+    // Примеры использования
+    log_info!("Приложение запущено");
+    log_debug!("Отладочная информация");
+    log_warn!("Предупреждение");
+    log_error!("Ошибка");
+
+    println!("\nПример завершен. Проверьте вывод логов выше.");
 
     // Принудительно один поток
     let config = OptimizationConfig {
