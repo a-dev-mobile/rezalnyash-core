@@ -69,15 +69,15 @@ impl PerformanceThresholds {
     /// Validate performance thresholds
     pub fn validate(&self) -> Result<()> {
         if self.max_simultaneous_tasks == 0 {
-            return Err(AppError::invalid_configuration("Maximum simultaneous tasks must be greater than 0"));
+            return Err(AppError::InvalidConfiguration{message: "Maximum simultaneous tasks must be greater than 0".into()});
         }
 
         if self.max_simultaneous_threads == 0 {
-            return Err(AppError::invalid_configuration("Maximum simultaneous threads must be greater than 0"));
+            return Err(AppError::InvalidConfiguration{message: "Maximum simultaneous threads must be greater than 0".into()});
         }
 
         if self.thread_check_interval == 0 {
-            return Err(AppError::invalid_configuration("Thread check interval must be greater than 0"));
+            return Err(AppError::InvalidConfiguration{message: "Thread check interval must be greater than 0".into()});
         }
 
         Ok(())

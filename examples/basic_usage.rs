@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Инициализация логирования
     init_logging(LogConfig {
         level: LogLevel::Debug,
-    })?;
+    });
 
     // Примеры использования
     log_info!("Приложение запущено");
