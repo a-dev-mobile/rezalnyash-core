@@ -1,9 +1,9 @@
 //! src/optimizer.rs - Рефакторинг с явными методами
 
 use crate::{
-    types::*,
     algorithms::{BestFitAlgorithm, BottomLeftFillAlgorithm},
-    parallel::{ParallelOptimizer, BatchProcessor},
+    parallel::{BatchProcessor, ParallelOptimizer},
+    types::*,
     CuttingAlgorithm, OptimizationConfig, Result,
 };
 use std::time::Instant;
@@ -22,12 +22,12 @@ pub enum OptimizationStrategy {
 }
 
 /// Основной оптимизатор раскроя
-pub struct CuttingOptimizer {
+pub struct CutListOptimizerService {
     config: OptimizationConfig,
     algorithms: Vec<Box<dyn CuttingAlgorithm>>,
 }
 
-impl CuttingOptimizer {
+impl CutListOptimizerService {
     /// Создает новый оптимизатор с настройками по умолчанию
     pub fn new() -> Self {
         Self::with_config(OptimizationConfig::default())
@@ -52,7 +52,11 @@ impl CuttingOptimizer {
 
     /// Быстрая последовательная оптимизация
     /// Подходит для: малых объемов, быстрого прототипирования
-    pub fn optimize_sequential(&self, material: &Material, requests: &[CuttingRequest]) -> Result<CuttingResult> {
+    pub fn optimize_sequential(
+        &self,
+        material: &Material,
+        requests: &[CuttingRequest],
+    ) -> Result<CuttingResult> {
         let start_time = Instant::now();
         self.validate_input(material, requests)?;
 
@@ -61,13 +65,17 @@ impl CuttingOptimizer {
 
         let algorithm = &self.algorithms[0]; // Используем первый алгоритм
         let result = algorithm.optimize(material, &sorted_requests)?;
-        
+
         self.finalize_result(result, start_time)
     }
 
     /// Параллельная оптимизация
     /// Подходит для: средних объемов, когда производительность важна
-    pub fn optimize_parallel(&self, material: &Material, requests: &[CuttingRequest]) -> Result<CuttingResult> {
+    pub fn optimize_parallel(
+        &self,
+        material: &Material,
+        requests: &[CuttingRequest],
+    ) -> Result<CuttingResult> {
         let start_time = Instant::now();
         self.validate_input(material, requests)?;
 
@@ -76,30 +84,35 @@ impl CuttingOptimizer {
 
         let parallel_optimizer = ParallelOptimizer::new(self.config.clone());
         let result = parallel_optimizer.optimize(material, &sorted_requests, &self.algorithms)?;
-        
+
         self.finalize_result(result, start_time)
     }
 
     /// Пакетная оптимизация для больших объемов
     /// Подходит для: больших объемов, фоновой обработки
-    pub fn optimize_batch(&self, material: &Material, requests: &[CuttingRequest]) -> Result<CuttingResult> {
+    pub fn optimize_batch(
+        &self,
+        material: &Material,
+        requests: &[CuttingRequest],
+    ) -> Result<CuttingResult> {
         self.optimize_batch_with_size(material, requests, 50)
     }
 
     /// Пакетная оптимизация с настраиваемым размером пакета
     pub fn optimize_batch_with_size(
-        &self, 
-        material: &Material, 
+        &self,
+        material: &Material,
         requests: &[CuttingRequest],
-        batch_size: usize
+        batch_size: usize,
     ) -> Result<CuttingResult> {
         let start_time = Instant::now();
         self.validate_input(material, requests)?;
 
         let batch_processor = BatchProcessor::new(batch_size);
         let algorithm = &self.algorithms[0];
-        let result = batch_processor.process_batches_parallel(material, requests, algorithm.as_ref())?;
-        
+        let result =
+            batch_processor.process_batches_parallel(material, requests, algorithm.as_ref())?;
+
         self.finalize_result(result, start_time)
     }
 
@@ -124,14 +137,19 @@ impl CuttingOptimizer {
     // ===== СПЕЦИАЛИЗИРОВАННЫЕ МЕТОДЫ =====
 
     /// Быстрая оценка без полной оптимизации
-    pub fn estimate_quick(&self, material: &Material, requests: &[CuttingRequest]) -> Result<OptimizationEstimate> {
+    pub fn estimate_quick(
+        &self,
+        material: &Material,
+        requests: &[CuttingRequest],
+    ) -> Result<OptimizationEstimate> {
         self.validate_input(material, requests)?;
 
         let total_area: f64 = requests.iter().map(|r| r.total_area()).sum();
         let material_area = material.area();
-        
+
         let theoretical_sheets = (total_area / material_area).ceil() as usize;
-        let estimated_efficiency = (total_area / (theoretical_sheets as f64 * material_area)).min(1.0);
+        let estimated_efficiency =
+            (total_area / (theoretical_sheets as f64 * material_area)).min(1.0);
 
         Ok(OptimizationEstimate {
             estimated_sheets: theoretical_sheets,
@@ -203,15 +221,17 @@ impl CuttingOptimizer {
 
         for (i, request) in requests.iter().enumerate() {
             if request.width <= 0.0 || request.height <= 0.0 {
-                return Err(OptimizationError::InvalidPartSize(
-                    format!("Part {} has invalid dimensions", i),
-                ));
+                return Err(OptimizationError::InvalidPartSize(format!(
+                    "Part {} has invalid dimensions",
+                    i
+                )));
             }
 
             if !request.fits_in_material(material) {
-                return Err(OptimizationError::PartDoesNotFit(
-                    format!("Part {} does not fit in material", i),
-                ));
+                return Err(OptimizationError::PartDoesNotFit(format!(
+                    "Part {} does not fit in material",
+                    i
+                )));
             }
         }
 
@@ -227,7 +247,10 @@ impl CuttingOptimizer {
             }
 
             // Затем по площади (убывание)
-            let area_cmp = b.area().partial_cmp(&a.area()).unwrap_or(std::cmp::Ordering::Equal);
+            let area_cmp = b
+                .area()
+                .partial_cmp(&a.area())
+                .unwrap_or(std::cmp::Ordering::Equal);
             if area_cmp != std::cmp::Ordering::Equal {
                 return area_cmp;
             }
@@ -235,18 +258,24 @@ impl CuttingOptimizer {
             // Затем по максимальной стороне (убывание)
             let max_side_a = a.width.max(a.height);
             let max_side_b = b.width.max(b.height);
-            max_side_b.partial_cmp(&max_side_a).unwrap_or(std::cmp::Ordering::Equal)
+            max_side_b
+                .partial_cmp(&max_side_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
     }
 
-    fn finalize_result(&self, mut result: CuttingResult, start_time: Instant) -> Result<CuttingResult> {
+    fn finalize_result(
+        &self,
+        mut result: CuttingResult,
+        start_time: Instant,
+    ) -> Result<CuttingResult> {
         result.execution_time_ms = start_time.elapsed().as_millis() as u64;
         result.recalculate_totals();
         Ok(result)
     }
 }
 
-impl Default for CuttingOptimizer {
+impl Default for CutListOptimizerService {
     fn default() -> Self {
         Self::new()
     }
@@ -281,13 +310,13 @@ mod tests {
 
     #[test]
     fn test_optimizer_creation() {
-        let optimizer = CuttingOptimizer::new();
+        let optimizer = CutListOptimizerService::new();
         assert!(!optimizer.algorithms.is_empty());
     }
 
     #[test]
     fn test_sequential_optimization() {
-        let optimizer = CuttingOptimizer::new();
+        let optimizer = CutListOptimizerService::new();
         let material = Material::new(1000.0, 2000.0).unwrap();
         let requests = vec![
             CuttingRequest::new(300.0, 400.0, 2),
@@ -296,7 +325,7 @@ mod tests {
 
         let result = optimizer.optimize_sequential(&material, &requests);
         assert!(result.is_ok());
-        
+
         let result = result.unwrap();
         assert!(!result.layouts.is_empty());
         assert!(result.total_utilization > 0.0);
@@ -304,7 +333,7 @@ mod tests {
 
     #[test]
     fn test_parallel_optimization() {
-        let optimizer = CuttingOptimizer::new();
+        let optimizer = CutListOptimizerService::new();
         let material = Material::new(1000.0, 2000.0).unwrap();
         let requests = vec![
             CuttingRequest::new(300.0, 400.0, 2),
@@ -313,7 +342,7 @@ mod tests {
 
         let result = optimizer.optimize_parallel(&material, &requests);
         assert!(result.is_ok());
-        
+
         let result = result.unwrap();
         assert!(!result.layouts.is_empty());
         assert!(result.total_utilization > 0.0);
@@ -321,22 +350,24 @@ mod tests {
 
     #[test]
     fn test_strategy_selection() {
-        let optimizer = CuttingOptimizer::new();
-        
+        let optimizer = CutListOptimizerService::new();
+
         // Маленькая задача → sequential
         let small_requests = vec![CuttingRequest::new(100.0, 200.0, 1)];
         let strategy = optimizer.choose_optimal_strategy(&small_requests);
         assert_eq!(strategy, OptimizationStrategy::Sequential);
-        
+
         // Большая задача → batch
-        let large_requests = (0..50).map(|i| CuttingRequest::new(100.0 + i as f64, 200.0, 3)).collect::<Vec<_>>();
+        let large_requests = (0..50)
+            .map(|i| CuttingRequest::new(100.0 + i as f64, 200.0, 3))
+            .collect::<Vec<_>>();
         let strategy = optimizer.choose_optimal_strategy(&large_requests);
         assert_eq!(strategy, OptimizationStrategy::Batch);
     }
 
     #[test]
     fn test_quick_estimate() {
-        let optimizer = CuttingOptimizer::new();
+        let optimizer = CutListOptimizerService::new();
         let material = Material::new(1000.0, 1000.0).unwrap();
         let requests = vec![CuttingRequest::new(300.0, 400.0, 8)];
 

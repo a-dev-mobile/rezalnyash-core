@@ -1,13 +1,23 @@
-
-
-pub mod types;
-pub mod optimizer;
 pub mod algorithms;
+pub mod optimizer;
 pub mod parallel;
+pub mod types;
+pub mod errors;
 
-pub use types::{Material, CuttingRequest, CuttingResult, CuttingLayout, Rectangle, OptimizationError};
-pub use optimizer::{CuttingOptimizer, OptimizationStrategy, OptimizationEstimate, AlgorithmComparison};
+
+
+
+
+pub mod models;
+pub mod enums;
+
 pub use algorithms::{BestFitAlgorithm, BottomLeftFillAlgorithm};
+pub use optimizer::{
+    AlgorithmComparison, CutListOptimizerService, OptimizationEstimate, OptimizationStrategy,
+};
+pub use types::{
+    CuttingLayout, CuttingRequest, CuttingResult, Material, OptimizationError, Rectangle,
+};
 
 /// Результат выполнения операции оптимизации
 pub type Result<T> = std::result::Result<T, OptimizationError>;
@@ -16,7 +26,7 @@ pub type Result<T> = std::result::Result<T, OptimizationError>;
 pub trait CuttingAlgorithm: Send + Sync {
     /// Выполняет оптимизацию раскроя для заданного материала и запросов
     fn optimize(&self, material: &Material, requests: &[CuttingRequest]) -> Result<CuttingResult>;
-    
+
     /// Возвращает название алгоритма
     fn name(&self) -> &'static str;
 }
@@ -37,7 +47,11 @@ pub struct OptimizationConfig {
 impl Default for OptimizationConfig {
     fn default() -> Self {
         Self {
-            max_threads: Some(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4)),
+            max_threads: Some(
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4),
+            ),
             cutting_gap: 2.0,
             min_waste_size: 50.0,
             timeout_seconds: Some(300), // 5 минут
@@ -57,9 +71,9 @@ mod tests {
             CuttingRequest::new(200.0, 300.0, 1),
         ];
 
-        let optimizer = CuttingOptimizer::new();
+        let optimizer = CutListOptimizerService::new();
         let result = optimizer.optimize_sequential(&material, &requests);
-        
+
         assert!(result.is_ok());
         let result = result.unwrap();
         assert!(!result.layouts.is_empty());
@@ -73,9 +87,9 @@ mod tests {
             CuttingRequest::new(200.0, 300.0, 1),
         ];
 
-        let optimizer = CuttingOptimizer::new();
+        let optimizer = CutListOptimizerService::new();
         let result = optimizer.optimize_parallel(&material, &requests);
-        
+
         assert!(result.is_ok());
         let result = result.unwrap();
         assert!(!result.layouts.is_empty());
@@ -86,9 +100,10 @@ mod tests {
         let material = Material::new(1000.0, 2000.0).unwrap();
         let requests = vec![CuttingRequest::new(300.0, 400.0, 1)];
 
-        let optimizer = CuttingOptimizer::new();
-        let result = optimizer.optimize_with_strategy(&material, &requests, OptimizationStrategy::Auto);
-        
+        let optimizer = CutListOptimizerService::new();
+        let result =
+            optimizer.optimize_with_strategy(&material, &requests, OptimizationStrategy::Auto);
+
         assert!(result.is_ok());
     }
 }
