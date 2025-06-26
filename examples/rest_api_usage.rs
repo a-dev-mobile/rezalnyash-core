@@ -2,7 +2,7 @@
 //! Чистый пример интеграции в REST API
 
 use rezalnyas_core::{
-    CuttingOptimizer, CuttingRequest, Material, OptimizationStrategy,
+    CutListOptimizerService, CuttingRequest, Material, OptimizationStrategy,
     OptimizationConfig, OptimizationEstimate, AlgorithmComparison
 };
 use serde::{Deserialize, Serialize};
@@ -78,13 +78,13 @@ pub struct PlacedPartResponse {
 // ===== ОСНОВНОЙ СЕРВИС =====
 
 pub struct CuttingService {
-    optimizer: CuttingOptimizer,
+    optimizer: CutListOptimizerService,
 }
 
 impl CuttingService {
     pub fn new() -> Self {
         Self {
-            optimizer: CuttingOptimizer::new(),
+            optimizer: CutListOptimizerService::new(),
         }
     }
 
@@ -128,7 +128,7 @@ impl CuttingService {
                 timeout_seconds: config.timeout_seconds,
                 max_threads: Some(4),
             };
-            CuttingOptimizer::with_config(opt_config)
+            CutListOptimizerService::with_config(opt_config)
         } else {
             self.optimizer.clone()
         };
