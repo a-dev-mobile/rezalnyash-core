@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::enums::{optimization_priority::OptimizationPriority};
+use crate::{enums::optimization_priority::OptimizationPriority, models::performance_thresholds::PerformanceThresholds};
 
 
 /// Configuration parameters for the optimization process

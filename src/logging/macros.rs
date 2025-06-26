@@ -1,5 +1,3 @@
-//! Удобные макросы для логирования
-
 use crate::logging::enums::LogLevel;
 use crate::logging::init::AppLogger;
 
@@ -7,7 +5,7 @@ use crate::logging::init::AppLogger;
 #[macro_export]
 macro_rules! log_error {
     ($($arg:tt)*) => {
-        $crate::logging::init::SimpleLogger::log(
+        $crate::logging::init::AppLogger::log(
             $crate::logging::enums::LogLevel::Error,
             &format!($($arg)*)
         );
@@ -18,7 +16,7 @@ macro_rules! log_error {
 #[macro_export]
 macro_rules! log_warn {
     ($($arg:tt)*) => {
-        $crate::logging::init::SimpleLogger::log(
+        $crate::logging::init::AppLogger::log(
             $crate::logging::enums::LogLevel::Warn,
             &format!($($arg)*)
         );
@@ -29,7 +27,7 @@ macro_rules! log_warn {
 #[macro_export]
 macro_rules! log_info {
     ($($arg:tt)*) => {
-        $crate::logging::init::SimpleLogger::log(
+        $crate::logging::init::AppLogger::log(
             $crate::logging::enums::LogLevel::Info,
             &format!($($arg)*)
         );
@@ -40,7 +38,7 @@ macro_rules! log_info {
 #[macro_export]
 macro_rules! log_debug {
     ($($arg:tt)*) => {
-        $crate::logging::init::SimpleLogger::log(
+        $crate::logging::init::AppLogger::log(
             $crate::logging::enums::LogLevel::Debug,
             &format!($($arg)*)
         );
