@@ -4,15 +4,7 @@ use super::structs::Tile;
 
 
 impl Tile {
-    /// Create a new tile from TileDimensions, positioned at origin (0,0)
-    pub fn from_dimensions(tile_dimensions: &TileDimensions) -> Self {
-        Self {
-            x1: 0,
-            x2: tile_dimensions.width,
-            y1: 0,
-            y2: tile_dimensions.height,
-        }
-    }
+  
 
     /// Create a new tile with explicit coordinates
     pub fn new(x1: i32, x2: i32, y1: i32, y2: i32) -> Self {
