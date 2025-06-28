@@ -5,6 +5,7 @@ pub mod types;
 pub mod errors;
 pub mod logging;
 pub mod constants;
+pub mod services;
 
 
 
