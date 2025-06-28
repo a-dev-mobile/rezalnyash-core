@@ -23,13 +23,21 @@ impl AppLogger {
             return;
         }
 
+        // ANSI коды цветов
+        let (color_code, reset_code) = match level {
+            LogLevel::Error => ("\x1b[31m", "\x1b[0m"), // Красный
+            LogLevel::Warn => ("\x1b[33m", "\x1b[0m"),  // Желтый
+            LogLevel::Info => ("\x1b[32m", "\x1b[0m"),  // Зеленый
+            LogLevel::Debug => ("\x1b[36m", "\x1b[0m"), // Голубой
+        };
+
         // Выводим в stderr для ошибок, в stdout для остального
         match level {
             LogLevel::Error => {
-                let _ = writeln!(io::stderr(), "[{}] {}", level, message);
+                let _ = writeln!(io::stderr(), "{}[{}]{} {}", color_code, level, reset_code, message);
             }
             _ => {
-                let _ = writeln!(io::stdout(), "[{}] {}", level, message);
+                let _ = writeln!(io::stdout(), "{}[{}]{} {}", color_code, level, reset_code, message);
             }
         }
     }
