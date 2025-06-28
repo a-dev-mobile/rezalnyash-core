@@ -224,18 +224,7 @@ impl Mosaic {
         self.root_tile_node.height()
     }
 
-    /// Convert to TileDimensions
-    pub fn to_tile_dimensions(&self) -> TileDimensions {
-        TileDimensions {
-            id: self.stock_id,
-            width: self.width(),
-            height: self.height(),
-            label: None,
-            material: self.material.clone(),
-            orientation: self.orientation,
-            is_rotated: false,
-        }
-    }
+ 
 }
 
 impl std::fmt::Display for Mosaic {

@@ -23,20 +23,7 @@ impl TileNode {
         }
     }
 
-    /// Create a new TileNode from TileDimensions
-    pub fn from_dimensions(tile_dimensions: &TileDimensions) -> Self {
-        Self {
-            id: NEXT_ID.fetch_add(1, Ordering::SeqCst),
-            external_id: None,
-            tile: Tile::from_dimensions(tile_dimensions),
-            is_final: false,
-            is_rotated: false,
-            child1: None,
-            child2: None,
-            is_area_totally_used: false,
-            totally_used_area: 0,
-        }
-    }
+   
 
     /// Create a copy of an existing TileNode (with same ID)
     pub fn from_tile_node(other: &TileNode) -> Self {
@@ -425,18 +412,7 @@ impl TileNode {
         }
     }
 
-    /// Convert to TileDimensions
-    pub fn to_tile_dimensions(&self) -> TileDimensions {
-        TileDimensions {
-            id: self.external_id.unwrap_or(self.id as i32),
-            width: self.width(),
-            height: self.height(),
-            label: None,
-            material: String::from("default"),
-            orientation: Orientation::Default,
-            is_rotated: self.is_rotated,
-        }
-    }
+  
 
     /// Create a string identifier for this node
     pub fn string_identifier(&self) -> String {

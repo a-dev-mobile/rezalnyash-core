@@ -6,6 +6,7 @@ pub mod errors;
 pub mod logging;
 pub mod constants;
 pub mod services;
+pub mod scaled_math;
 
 
 

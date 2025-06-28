@@ -49,19 +49,7 @@ impl Mosaic {
         }
     }
 
-    /// Create a new Mosaic from TileDimensions
-    pub fn from_tile_dimensions(tile_dimensions: &TileDimensions) -> Self {
-        let mut root_node = TileNode::from_dimensions(tile_dimensions);
-        root_node.set_external_id(Some(tile_dimensions.id));
-        
-        Self {
-            cuts: Vec::new(),
-            root_tile_node: root_node,
-            material: tile_dimensions.material.clone(),
-            orientation: tile_dimensions.orientation,
-            stock_id: tile_dimensions.id,
-        }
-    }
+   
 }
 
 impl Default for Mosaic {
