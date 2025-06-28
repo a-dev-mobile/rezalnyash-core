@@ -4,39 +4,9 @@ use super::structs::CalculationRequest;
 
 
 impl CalculationRequest {
-    fn default() -> Self {
-        Self {
-            configuration: None,
-            panels: Vec::new(),
-            stock_panels: Vec::new(),
-        }
-    }
+  
 
 
-
-    /// Creates a new CalculationRequest with the given configuration
-    pub fn with_configuration(configuration: Configuration) -> Self {
-        Self {
-            configuration: Some(configuration),
-            panels: Vec::new(),
-            stock_panels: Vec::new(),
-        }
-    }
-
-    /// Gets a reference to the configuration
-    pub fn configuration(&self) -> Option<&Configuration> {
-        self.configuration.as_ref()
-    }
-
-    /// Sets the configuration
-    pub fn set_configuration(&mut self, configuration: Configuration) {
-        self.configuration = Some(configuration);
-    }
-
-    /// Takes ownership of the configuration, leaving None in its place
-    pub fn take_configuration(&mut self) -> Option<Configuration> {
-        self.configuration.take()
-    }
 
     /// Gets a reference to the panels list
     pub fn panels(&self) -> &[Panel] {

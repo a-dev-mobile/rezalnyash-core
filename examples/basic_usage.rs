@@ -1,7 +1,15 @@
-
+use rayon::vec;
 use rezalnyas_core::{
+    enums::{
+        cut_orientation_preference::CutOrientationPreference,
+        optimization_priority::OptimizationPriority,
+    },
     log_debug, log_error, log_info, log_warn,
     logging::{init_logging, LogConfig, LogLevel},
+    models::{
+        calculation_request::CalculationRequest, configuration::structs::Configuration,
+        panel::structs::Panel, performance_thresholds::PerformanceThresholds,
+    },
     CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy,
 };
 
@@ -27,7 +35,80 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nПример завершен. Проверьте вывод логов выше.");
 
-    // Принудительно один поток
+    let panels: Vec<Panel> = vec![
+        Panel::new(1, 55.0, 45.0, 1),
+        Panel::new(2, 35.0, 25.0, 1),
+        Panel::new(3, 25.0, 15.0, 1),
+        Panel::new(4, 15.0, 20.0, 1),
+        Panel::new(5, 40.0, 30.0, 1),
+    ];
+    let stock_panels: Vec<Panel> = vec![Panel::new(1, 90.0, 120.0, 1)];
+
+    let config = Configuration {
+        cut_thickness: 0.0,             // Точная толщина реза
+        use_single_stock_unit: false, // Разрешаем использовать разные листы
+        optimization_factor: 2,
+        // in java = 0
+        optimization_priority: vec![
+            // Приоритеты оптимизации
+            OptimizationPriority::MostTiles,
+            OptimizationPriority::LeastWastedArea,
+            OptimizationPriority::LeastNbrCuts,
+            OptimizationPriority::LeastNbrMosaics,
+            OptimizationPriority::BiggestUnusedTileArea,
+            OptimizationPriority::MostHvDiscrepancy,
+        ],
+        cut_orientation_preference: CutOrientationPreference::Both, // Все направления резов
+
+        consider_orientation: false, // Учитывать ориентацию волокон
+        min_trim_dimension: 0.0, //  это минимальный полезный размер остатка в любом направлении, в тех же единицах, что и остальные размеры (мм, см, дюймы и т.д.).
+        performance_thresholds: PerformanceThresholds {
+            max_simultaneous_tasks: 1,   // Максимум потоков
+            max_simultaneous_threads: 1, // Максимум потоков на задачу
+            thread_check_interval: 100,
+        },
+    };
+    let request = CalculationRequest {
+        configuration: config,
+        panels,
+        stock_panels,
+    };
+
+
+
+
+
+
+
+
+
+
+
+
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+
     let config = OptimizationConfig {
         max_threads: Some(1),
         cutting_gap: 2.0,
@@ -36,14 +117,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let optimizer = CutListOptimizerService::with_config(config);
-    let material = Material::with_cost(1000.0, 2000.0, 0.08)?;
-
     // Простая задача для отладки
     let requests = vec![
         CuttingRequest::new(300.0, 400.0, 2),
         CuttingRequest::new(200.0, 300.0, 1),
         CuttingRequest::new(150.0, 250.0, 3),
     ];
+    let material = Material::with_cost(1000.0, 2000.0, 0.08)?;
 
     println!("\n📊 Debug task:");
     println!(

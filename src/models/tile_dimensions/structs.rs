@@ -2,8 +2,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::enums::orientation::Orientation;
 
+
+
 /// Represents the dimensions and properties of a tile/panel to be cut
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TileDimensions {
     pub id: i32,
     pub width: i32,
