@@ -19,13 +19,13 @@ pub struct Task {
     
     // Входные данные  
    pub calculation_request: CalculationRequest,
-   pub factor: f64,
+   pub factor: i64,
     
     // Состояние
    pub status: Status,
-   pub percentage_done: i32,
+   pub percentage_done: u8,
    pub start_time: Option<SystemTime>,
-   pub last_queried: i64,
+
     
     // Результаты
    pub solutions: Vec<Solution>,

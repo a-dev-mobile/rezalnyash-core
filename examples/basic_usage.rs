@@ -2,14 +2,14 @@ use rayon::vec;
 use rezalnyas_core::{
     enums::{
         cut_orientation_preference::CutOrientationPreference,
-        optimization_priority::OptimizationPriority,
+        optimization_priority::OptimizationPriority, status::Status,
     },
     log_debug, log_error, log_info, log_warn,
     logging::{init_logging, LogConfig, LogLevel},
     models::{
         calculation_request::CalculationRequest, configuration::structs::Configuration,
-        panel::structs::Panel, performance_thresholds::PerformanceThresholds,
-        tile_dimensions::TileDimensions,
+        panel::structs::Panel, performance_thresholds::PerformanceThresholds, task::structs::Task,
+        tile_dimensions::{structs::generate_groups, TileDimensions},
     },
     scaled_math::{PrecisionAnalyzer, ScaledConverter, ScaledNumber},
     CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy,
@@ -42,7 +42,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Panel::new(4, "15.000".to_string(), "20.0".to_string(), 1),
         Panel::new(5, "40.0".to_string(), "30.0".to_string(), 1),
     ];
-    let stock_panels: Vec<Panel> = vec![Panel::new(1, "90.0255".to_string(), "120.01".to_string(), 1)];
+    let stock_panels: Vec<Panel> = vec![Panel::new(
+        1,
+        "90.0255".to_string(),
+        "120.01".to_string(),
+        1,
+    )];
 
     let config = Configuration {
         cut_thickness: 0.0,           // Точная толщина реза
@@ -178,6 +183,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             stock_tiles.push(stock_tile);
         }
     }
+    let mut task = Task {
+        id: "test_task".to_string(),
+        calculation_request: request,
+        factor: scale_factor,
+        solutions: Vec::new(),
+        status: Status::Idle,
+        percentage_done: 0,
+        iterations_completed: 0,
+        error_message: None,
+        best_solution: None,
+        start_time: None,
 
+    };
+
+
+//    List<GroupedTileDimensions> listGenerateGroups = generateGroups(list, list2, task2);
+
+let generate_groups = generate_groups(&tiles, &stock_tiles, &task);
+
+
+
+    
     Ok(())
 }
