@@ -10,6 +10,7 @@ use rezalnyas_core::{
         calculation_request::CalculationRequest, configuration::structs::Configuration,
         panel::structs::Panel, performance_thresholds::PerformanceThresholds,
     },
+
     CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy,
 };
 
@@ -33,8 +34,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log_warn!("Предупреждение");
     log_error!("Ошибка");
 
-    println!("\nПример завершен. Проверьте вывод логов выше.");
-
     let panels: Vec<Panel> = vec![
         Panel::new(1, 55.0, 45.0, 1),
         Panel::new(2, 35.0, 25.0, 1),
@@ -45,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stock_panels: Vec<Panel> = vec![Panel::new(1, 90.0, 120.0, 1)];
 
     let config = Configuration {
-        cut_thickness: 0.0,             // Точная толщина реза
+        cut_thickness: 0.0,           // Точная толщина реза
         use_single_stock_unit: false, // Разрешаем использовать разные листы
         optimization_factor: 2,
         // in java = 0
@@ -74,16 +73,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stock_panels,
     };
 
+    // let result = CutListOptimizerServiceImpl{
+    //     request,
+    //     allow_multiple_tasks_per_client: true,
 
-
-
-
-
-
-
-
-
-
+    // };
 
     //
     //
