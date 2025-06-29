@@ -16,4 +16,4 @@ pub mod tile_node;
 pub mod tile;
 pub mod cut;
 pub mod solution;
-
+pub mod permutation_thread_spawner;

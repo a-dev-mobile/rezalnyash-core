@@ -7,7 +7,7 @@ use rezalnyas_core::{
     log_debug, log_error, log_info, log_warn,
     logging::{init_logging, LogConfig, LogLevel},
     models::{
-        calculation_request::CalculationRequest, configuration::Configuration, grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions}, panel::structs::Panel, performance_thresholds::PerformanceThresholds, stock_solution::StockPanelPicker, task::Task, tile::tile_conversion::grouped_tile_dimensions_list_to_tile_dimensions_list, tile_dimensions::{
+        calculation_request::CalculationRequest, configuration::Configuration, grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions}, panel::structs::Panel, performance_thresholds::PerformanceThresholds, permutation_thread_spawner::{PermutationThreadSpawner, ProgressTracker}, stock_solution::StockPanelPicker, task::Task, tile::tile_conversion::grouped_tile_dimensions_list_to_tile_dimensions_list, tile_dimensions::{
             count_duplicate_permutations, generate_groups, generate_groups_improved,
             generate_groups_java_compatible, remove_duplicated_permutations,
             remove_duplicated_permutations_java_compatible, TileDimensions,
@@ -468,14 +468,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    log_info!("\n=== Алгоритм выполнен успешно ===");
-    log_info!("Обработано {} деталей", tiles.len());
-    log_info!("Создано {} вариантов размещения", sorted_tile_lists.len());
-
-
-
-
-
 
 
 
@@ -568,8 +560,180 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log_info!("Создано {} вариантов размещения", sorted_tile_lists.len());
     log_info!("Оптимизационный фактор: {}", optimization_factor);
 
+    /*
+     * Инициализация менеджеров потоков (однопоточная версия)
+     * 
+     * Создаем менеджер для обработки перестановок
+     * Создаем трекер прогресса выполнения  
+     * Настраиваем ограничения (в однопоточном режиме они не критичны)
+     */
+
+    let mut permutation_thread_spawner = PermutationThreadSpawner::new();
+    let mut progress_tracker = ProgressTracker::new(
+        sorted_tile_lists.len(),
+        &mut task,
+        "DEFAULT_MATERIAL".to_string()
+    );
+    
+    permutation_thread_spawner.set_progress_tracker(&mut progress_tracker);
+    permutation_thread_spawner.set_max_alive_spawner_threads(configuration.performance_thresholds.max_simultaneous_threads);
+    permutation_thread_spawner.set_interval_between_max_alive_check(configuration.performance_thresholds.thread_check_interval);
+
+    log_info!(
+        "Initialized thread managers: max_threads={}, check_interval={}ms",
+        configuration.performance_thresholds.max_simultaneous_threads,
+        configuration.performance_thresholds.thread_check_interval
+    );
 
 
 
+
+    /*
+     * Основной цикл обработки перестановок - ТОЧНАЯ КОПИЯ JAVA ЛОГИКИ
+     * 
+     * Java: while (true) { if (i >= arrayList4.size()) { break; } ... }
+     * 
+     * Цикл по каждой перестановке панелей
+     * Проверяем, не остановлена ли задача
+     * Если уже найдено решение "все панели помещаются" и запущено достаточно потоков - прекращаем
+     */
+
+    const MAX_PERMUTATIONS_WITH_SOLUTION: usize = 150; // Java: MAX_PERMUTATIONS_WITH_SOLUTION = 150
+    let mut i = 0; // Java: int i = 0 (счетчик перестановок)
+    let str3 = "]"; // Java: String str3 = "]"; (для логирования)
+    let i3 = 100; // Java: int i3 = 100; (базовое значение процента)
+    let material_str = "DEFAULT_MATERIAL"; // Java: final String materialStr = str;
+
+    // Java: while (true)
+    loop {
+        // Java: if (i >= arrayList4.size()) { break; }
+        if i >= sorted_tile_lists.len() {
+            log_debug!("Reached end of permutation list at index[{}]", i);
+            break;
+        }
+
+        // Java: final List<TileDimensions> list3 = (List<TileDimensions>) arrayList4.get(i);
+        let tile_arrangement = &sorted_tile_lists[i];
+
+        // Java: if (!task.isRunning()) { logger.debug("Tasked no longer has running status..."); break; }
+        if !task.is_running() {
+            log_debug!(
+                "Task no longer has running status. Stopping permutationSpawnerThread spawner at permutationIdx[{}{}",
+                i, str3
+            );
+            break;
+        }
+
+        // Java: if (task.hasSolutionAllFit() && permutationThreadSpawner.getNbrTotalThreads() > MAX_PERMUTATIONS_WITH_SOLUTION)
+        if task.has_solution_all_fit() && permutation_thread_spawner.get_nbr_total_threads() > MAX_PERMUTATIONS_WITH_SOLUTION {
+            // Java: task2.setMaterialPercentageDone(str2, Integer.valueOf(i3));
+            // task.set_material_percentage_done(material_str, i3); // TODO: реализовать когда будет структура
+            log_debug!("Task has solution and spawned max permutations threads");
+            break;
+        }
+
+        /*
+         * Запуск потока для обработки перестановки - АДАПТАЦИЯ ДЛЯ ОДНОПОТОЧНОСТИ
+         * 
+         * Java создает новый поток:
+         * permutationThreadSpawner2.spawn(new Thread(new Runnable() { ... }));
+         * 
+         * В Rust однопоточной версии вызываем метод напрямую:
+         * m301x52dbbde3(...) - это Java метод обработки одной перестановки
+         */
+
+        log_debug!(
+            "Processing permutation[{}] - spawning thread equivalent for {} tiles",
+            i,
+            tile_arrangement.len()
+        );
+
+        // Java: final variables для передачи в лямбду
+        // В Rust передаем напрямую в функцию
+        let stock_panel_picker_ref = &stock_panel_picker;
+        let permutation_idx = i; // Java: final int i5 = i;
+        let progress_tracker_ref = &mut progress_tracker; // Java: final ProgressTracker progressTracker2 = progressTracker;
+        let performance_thresholds_ref = &configuration.performance_thresholds; // Java: final PerformanceThresholds performanceThresholds2 = performanceThresholds;
+
+        // Java: CutListOptimizerServiceImpl.this.m301x52dbbde3(...)
+        // Rust: process_permutation_with_all_stock_solutions (аналог m301x52dbbde3)
+        match process_permutation_with_all_stock_solutions(
+            stock_panel_picker_ref,
+            permutation_idx,
+            &mut task,
+            &Vec::new(), // solutions - пока пустой список
+            &sorted_tile_lists,
+            &configuration,
+            tile_arrangement,
+            optimization_factor,
+            performance_thresholds_ref,
+            progress_tracker_ref,
+            material_str,
+        ) {
+            Ok(_) => {
+                log_debug!("Successfully processed permutation[{}]", permutation_idx);
+            }
+            Err(e) => {
+                log_error!("Error processing permutation[{}]: {}", permutation_idx, e);
+                // Java: Thread.currentThread().interrupt(); - в однопоточности не актуально
+            }
+        }
+
+        // Java: i++; (увеличиваем счетчик перестановок)
+        i += 1;
+
+        // Регистрируем завершение обработки перестановки
+        permutation_thread_spawner.register_completed_permutation();
+
+        // Обновляем прогресс
+        progress_tracker.refresh_task_status_info(&permutation_thread_spawner);
+
+        // Каждые 10 перестановок выводим прогресс (дополнительно для отладки)
+        if i % 10 == 0 {
+            log_info!(
+                "Progress: {}/{} permutations processed ({:.1}%) - Java loop iteration {}",
+                i,
+                sorted_tile_lists.len(),
+                (i as f64 / sorted_tile_lists.len() as f64) * 100.0,
+                i
+            );
+        }
+
+        // Java: обновление ссылок переменных (в однопоточности не требуется)
+        // permutationThreadSpawner = permutationThreadSpawner2;
+        // stockPanelPicker = stockPanelPicker;
+        // progressTracker = progressTracker2;
+        // str3 = str3;
+        // arrayList4 = arrayList6;
+        // performanceThresholds = performanceThresholds;
+        // i3 = 100;
+        // task2 = task;
+    }
+
+    /*
+     * Финализация
+     * 
+     * Устанавливаем статус задачи как завершенная
+     * Логируем итоговую статистику
+     */
+
+    if task.status == Status::Running {
+        task.status = Status::Finished;
+    }
+
+    log_info!(
+        "Task[{}] Processing completed. Status: {:?}",
+        task.id,
+        task.status
+    );
+
+    log_info!("\n=== Подготовка к раскрою завершена ===");
+    // log_info!("Обработано {} перестановок панелей", processed_permutations);
+    log_info!("Оптимизационный фактор: {}", optimization_factor);
+    log_info!("Сгенерированы варианты комбинаций листов");
+    log_info!("Готово к реализации алгоритма размещения панелей");
+
+
+    
     Ok(())
 }
