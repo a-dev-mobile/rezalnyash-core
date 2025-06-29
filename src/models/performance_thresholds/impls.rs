@@ -1,16 +1,14 @@
-// use super::structs::PerformanceThresholds;
-// use crate::errors::{AppError, Result};
-// use crate::constants::PerformanceConstants;
+use super::structs::PerformanceThresholds;
 
-// impl Default for PerformanceThresholds {
-//     fn default() -> Self {
-//         Self {
-//             max_simultaneous_tasks: 1, // Matches Java default
-//             max_simultaneous_threads: 4,
-//             thread_check_interval: 1000,
-//         }
-//     }
-// }
+impl Default for PerformanceThresholds {
+    fn default() -> Self {
+        Self {
+            max_simultaneous_tasks: 1, // Matches Java default
+            max_simultaneous_threads: 4,
+            thread_check_interval: 1000,
+        }
+    }
+}
 
 // impl PerformanceThresholds {
 //     /// Create new PerformanceThresholds with specified threads and check interval

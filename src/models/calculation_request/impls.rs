@@ -1,4 +1,4 @@
-use crate::models::{configuration::structs::Configuration, panel::structs::Panel};
+use crate::models::{ panel::structs::Panel};
 
 use super::structs::CalculationRequest;
 

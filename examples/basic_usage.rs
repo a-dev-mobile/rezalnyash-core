@@ -7,9 +7,13 @@ use rezalnyas_core::{
     log_debug, log_error, log_info, log_warn,
     logging::{init_logging, LogConfig, LogLevel},
     models::{
-        calculation_request::CalculationRequest, configuration::structs::Configuration,
-        panel::structs::Panel, performance_thresholds::PerformanceThresholds, task::structs::Task,
-        tile_dimensions::{structs::generate_groups, TileDimensions},
+        calculation_request::CalculationRequest,
+        configuration::Configuration,
+        grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions},
+        panel::structs::Panel,
+        performance_thresholds::PerformanceThresholds,
+        task::structs::Task,
+        tile_dimensions::{generate_groups, TileDimensions},
     },
     scaled_math::{PrecisionAnalyzer, ScaledConverter, ScaledNumber},
     CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy,
@@ -155,8 +159,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let tile = TileDimensions {
                 id: panel.id,
-                width: width_scaled.raw_value() as u32,
-                height: height_scaled.raw_value() as u32,
+                width: width_scaled.raw_value() as u64,
+                height: height_scaled.raw_value() as u64,
                 orientation: panel.orientation,
                 is_rotated: false,
             };
@@ -173,8 +177,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let stock_tile = TileDimensions {
                 id: stock_panel.id,
-                width: width_scaled.raw_value() as u32,
-                height: height_scaled.raw_value() as u32,
+                width: width_scaled.raw_value() as u64,
+                height: height_scaled.raw_value() as u64,
 
                 orientation: stock_panel.orientation,
                 is_rotated: false,
@@ -185,7 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let mut task = Task {
         id: "test_task".to_string(),
-        calculation_request: request,
+        calculation_request: request.clone(),
         factor: scale_factor,
         solutions: Vec::new(),
         status: Status::Idle,
@@ -194,16 +198,98 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         error_message: None,
         best_solution: None,
         start_time: None,
-
     };
 
+    // Генерация групп
+    let list_generate_groups = generate_groups(&tiles, &stock_tiles, &task);
 
-//    List<GroupedTileDimensions> listGenerateGroups = generateGroups(list, list2, task2);
+    let distinct_grouped_tile_dimensions =
+        get_distinct_grouped_tile_dimensions(&list_generate_groups, &configuration);
+    log_debug!("Task[{}] Calculating permutations...", task.id);
 
-let generate_groups = generate_groups(&tiles, &stock_tiles, &task);
+    let mut group_info = String::new();
+    for (i, (group, count)) in distinct_grouped_tile_dimensions.iter().enumerate() {
+        group_info.push_str(&format!(" group[{}:{}*{}] ", i + 1, group, count));
+    }
 
+    log_debug!("Task[{}] Groups: {}", task.id, group_info);
+    log_debug!("Generated {} groups", list_generate_groups.len());
+    log_debug!(
+        "Distinct groups: {}",
+        distinct_grouped_tile_dimensions.len()
+    );
 
+    let mut sorted_grouped_tiles: Vec<GroupedTileDimensions> =
+        distinct_grouped_tile_dimensions.keys().cloned().collect();
 
-    
+    // Сортировка по площади в убывающем порядке (аналог Java Comparator)
+    sorted_grouped_tiles.sort_by(|a, b| {
+        // Сравниваем по площади в убывающем порядке (как в Java: b.area - a.area)
+        b.get_area().cmp(&a.get_area())
+    });
+
+    log_debug!(
+        "Successfully sorted {} distinct tile dimensions by area",
+        sorted_grouped_tiles.len()
+    );
+
+    // Логирование отсортированного списка для отладки
+    for (i, grouped_tile) in sorted_grouped_tiles.iter().enumerate().take(5) {
+        // Показываем первые 5
+        log_debug!(
+            "Sorted[{}]: {} area={}",
+            i,
+            grouped_tile,
+            grouped_tile.get_area()
+        );
+    }
+
+    log_info!(
+        "Sorted {} distinct grouped tiles by area",
+        sorted_grouped_tiles.len()
+    );
+    /*
+     * Оптимизация количества перестановок
+     *
+     * Если групп больше 7, то для перестановок берем только первые 7 (самые большие)
+     * Остальные группы добавим в конец каждой перестановки без изменения порядка
+     * Это сокращает количество вариантов с факториала до разумного числа
+     */
+    let (permutation_tiles, remaining_tiles) = if sorted_grouped_tiles.len() > 7 {
+        let permutation_tiles = sorted_grouped_tiles[0..7].to_vec();
+        let remaining_tiles = sorted_grouped_tiles[7..].to_vec();
+
+        log_debug!(
+            "Task[{}] Optimization: Using first 7 groups for permutations, {} groups will be appended",
+            task.id,
+            remaining_tiles.len()
+        );
+
+        (permutation_tiles, remaining_tiles)
+    } else {
+        log_debug!(
+            "Task[{}] Using all {} groups for permutations",
+            task.id,
+            sorted_grouped_tiles.len()
+        );
+
+        (sorted_grouped_tiles, Vec::new())
+    };
+
+    log_info!(
+        "Permutation groups: {}, Remaining groups: {}",
+        permutation_tiles.len(),
+        remaining_tiles.len()
+    );
+
+    // Логирование групп для перестановок
+    for (i, tile) in permutation_tiles.iter().enumerate() {
+        log_debug!("Permutation[{}]: {} area={}", i, tile, tile.get_area());
+    }
+
+    // Логирование оставшихся групп
+    for (i, tile) in remaining_tiles.iter().enumerate() {
+        log_debug!("Remaining[{}]: {} area={}", i, tile, tile.get_area());
+    }
     Ok(())
 }
