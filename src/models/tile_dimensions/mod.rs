@@ -1,13 +1,18 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     enums::{
-        cut_orientation_preference::CutOrientationPreference, optimization_priority::OptimizationPriority, orientation::Orientation, status::Status
-    }, log_debug, models::{
-        calculation_request::structs::CalculationRequest, configuration::Configuration, grouped_tile_dimensions::GroupedTileDimensions, performance_thresholds::structs::PerformanceThresholds, task::structs::Task
-    }
+        cut_orientation_preference::CutOrientationPreference,
+        optimization_priority::OptimizationPriority, orientation::Orientation, status::Status,
+    },
+    log_debug,
+    models::{
+        calculation_request::structs::CalculationRequest, configuration::Configuration,
+        grouped_tile_dimensions::GroupedTileDimensions,
+        performance_thresholds::structs::PerformanceThresholds, task::structs::Task,
+    },
 };
 
 /// Represents the dimensions and properties of a tile/panel to be cut
@@ -20,7 +25,6 @@ pub struct TileDimensions {
     pub is_rotated: bool,
 }
 
-
 impl std::fmt::Display for TileDimensions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -31,11 +35,18 @@ impl std::fmt::Display for TileDimensions {
     }
 }
 
-
 impl TileDimensions {
     /// Convert dimensions to string format "widthxheight"
     pub fn dimensions_to_string(&self) -> String {
         format!("{}x{}", self.width, self.height)
+    }
+
+    /// Calculate dimensions-based hash code (аналог Java dimensionsBasedHashCode)
+    ///
+    /// # Returns
+    /// Hash code основанный только на размерах (width и height)
+    pub fn dimensions_based_hash_code(&self) -> i32 {
+        (self.width as i32 * 31) + (self.height as i32)
     }
 }
 
@@ -132,6 +143,110 @@ fn is_one_dimensional_optimization(
     true
 }
 
+pub fn remove_duplicated_permutations(permutation_lists: &mut Vec<Vec<TileDimensions>>) -> usize {
+    let mut seen_hash_codes = HashSet::new();
+    let mut removed_count = 0;
+    let original_count = permutation_lists.len();
+
+    // Используем retain для эффективного удаления элементов во время итерации
+    permutation_lists.retain(|tile_list| {
+        let hash_code = calculate_permutation_hash_code(tile_list);
+
+        if seen_hash_codes.contains(&hash_code) {
+            // Этот хеш-код уже видели, удаляем перестановку
+            removed_count += 1;
+            false // не сохранять этот элемент
+        } else {
+            // Новый хеш-код, сохраняем перестановку
+            seen_hash_codes.insert(hash_code);
+            true // сохранить этот элемент
+        }
+    });
+
+    log_debug!(
+        "Removed {} duplicated permutations, {} remaining (was {})",
+        removed_count,
+        permutation_lists.len(),
+        original_count
+    );
+
+    removed_count
+}
+
+/// Вычисляет хеш-код для списка плиток на основе размеров
+///
+/// Аналог логики из Java метода, где хеш-код вычисляется как:
+/// hash = hash * 31 + tile.dimensionsBasedHashCode()
+///
+/// # Arguments
+/// * `tile_list` - Список плиток для вычисления хеш-кода
+///
+/// # Returns
+/// Хеш-код основанный на размерах плиток в порядке их следования
+fn calculate_permutation_hash_code(tile_list: &[TileDimensions]) -> i32 {
+    let mut hash_code = 0i32;
+
+    for tile in tile_list {
+        hash_code = hash_code
+            .wrapping_mul(31)
+            .wrapping_add(tile.dimensions_based_hash_code());
+    }
+
+    hash_code
+}
+
+/// Альтернативная версия с использованием итераторов для более функционального стиля
+///
+/// # Arguments
+/// * `permutation_lists` - Список списков плиток
+///
+/// # Returns
+/// Новый вектор без дублированных перестановок и количество удаленных
+pub fn remove_duplicated_permutations_functional(
+    permutation_lists: Vec<Vec<TileDimensions>>,
+) -> (Vec<Vec<TileDimensions>>, usize) {
+    let original_count = permutation_lists.len();
+    let mut seen_hash_codes = HashSet::new();
+
+    let deduplicated: Vec<Vec<TileDimensions>> = permutation_lists
+        .into_iter()
+        .filter(|tile_list| {
+            let hash_code = calculate_permutation_hash_code(tile_list);
+            seen_hash_codes.insert(hash_code)
+        })
+        .collect();
+
+    let removed_count = original_count - deduplicated.len();
+
+    (deduplicated, removed_count)
+}
+
+/// Подсчитывает количество уникальных перестановок без их удаления
+///
+/// Полезно для предварительной оценки эффективности дедупликации
+///
+/// # Arguments
+/// * `permutation_lists` - Список списков плиток для анализа
+///
+/// # Returns
+/// (общее_количество, уникальных, дублированных)
+pub fn count_duplicate_permutations(
+    permutation_lists: &[Vec<TileDimensions>],
+) -> (usize, usize, usize) {
+    let total_count = permutation_lists.len();
+    let mut seen_hash_codes = HashSet::new();
+
+    for tile_list in permutation_lists {
+        let hash_code = calculate_permutation_hash_code(tile_list);
+        seen_hash_codes.insert(hash_code);
+    }
+
+    let unique_count = seen_hash_codes.len();
+    let duplicate_count = total_count - unique_count;
+
+    (total_count, unique_count, duplicate_count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,15 +284,13 @@ mod tests {
             },
         ];
 
-        let sheet_tiles = vec![
-            TileDimensions {
-                id: 3,
-                width: 200,
-                height: 100,
-                orientation: Orientation::Default,
-                is_rotated: false,
-            },
-        ];
+        let sheet_tiles = vec![TileDimensions {
+            id: 3,
+            width: 200,
+            height: 100,
+            orientation: Orientation::Default,
+            is_rotated: false,
+        }];
 
         let task = Task {
             id: "test".to_string(),
@@ -233,16 +346,95 @@ mod tests {
             },
         ];
 
-        let sheet_tiles = vec![
-            TileDimensions {
-                id: 3,
-                width: 100,
-                height: 200,
-                orientation: Orientation::Landscape,
-                is_rotated: false,
-            },
-        ];
+        let sheet_tiles = vec![TileDimensions {
+            id: 3,
+            width: 100,
+            height: 200,
+            orientation: Orientation::Landscape,
+            is_rotated: false,
+        }];
 
         assert!(is_one_dimensional_optimization(&tiles, &sheet_tiles));
+    }
+
+    fn create_test_tile(id: u8, width: u64, height: u64) -> TileDimensions {
+        TileDimensions {
+            id,
+            width,
+            height,
+            orientation: Orientation::Default,
+            is_rotated: false,
+        }
+    }
+
+    #[test]
+    fn test_calculate_permutation_hash_code() {
+        let tile1 = create_test_tile(1, 100, 50);
+        let tile2 = create_test_tile(2, 200, 100);
+
+        let list1 = vec![tile1.clone(), tile2.clone()];
+        let list2 = vec![tile2.clone(), tile1.clone()];
+
+        let hash1 = calculate_permutation_hash_code(&list1);
+        let hash2 = calculate_permutation_hash_code(&list2);
+
+        // Разные порядки должны давать разные хеш-коды
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_remove_duplicated_permutations() {
+        let tile1 = create_test_tile(1, 100, 50);
+        let tile2 = create_test_tile(2, 200, 100);
+
+        let mut permutations = vec![
+            vec![tile1.clone(), tile2.clone()],
+            vec![tile2.clone(), tile1.clone()],
+            vec![tile1.clone(), tile2.clone()], // Дублирует первую
+            vec![tile2.clone(), tile1.clone()], // Дублирует вторую
+        ];
+
+        let removed_count = remove_duplicated_permutations(&mut permutations);
+
+        assert_eq!(removed_count, 2);
+        assert_eq!(permutations.len(), 2);
+    }
+
+    #[test]
+    fn test_count_duplicate_permutations() {
+        let tile1 = create_test_tile(1, 100, 50);
+        let tile2 = create_test_tile(2, 200, 100);
+
+        let permutations = vec![
+            vec![tile1.clone(), tile2.clone()],
+            vec![tile2.clone(), tile1.clone()],
+            vec![tile1.clone(), tile2.clone()], // Дубликат
+        ];
+
+        let (total, unique, duplicates) = count_duplicate_permutations(&permutations);
+
+        assert_eq!(total, 3);
+        assert_eq!(unique, 2);
+        assert_eq!(duplicates, 1);
+    }
+
+    #[test]
+    fn test_dimensions_based_hash_code() {
+        let tile1 = create_test_tile(1, 100, 50);
+        let tile2 = create_test_tile(2, 100, 50); // Те же размеры, другой id
+
+        // Хеш-код должен быть одинаковым для одинаковых размеров
+        assert_eq!(
+            tile1.dimensions_based_hash_code(),
+            tile2.dimensions_based_hash_code()
+        );
+
+        let tile3 = create_test_tile(3, 200, 100);
+
+        // Разные размеры должны давать разные хеш-коды
+        assert_ne!(
+            tile1.dimensions_based_hash_code(),
+            tile3.dimensions_based_hash_code()
+        );
     }
 }
