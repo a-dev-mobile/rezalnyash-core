@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     enums::{
         cut_orientation_preference::CutOrientationPreference,
-        optimization_priority::OptimizationPriority, orientation::Orientation, status::Status,
+         orientation::Orientation, status::Status,
     },
     log_debug,
     models::{
