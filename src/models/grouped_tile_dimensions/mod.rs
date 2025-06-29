@@ -53,6 +53,10 @@ impl GroupedTileDimensions {
     pub fn get_area(&self) -> u64 {
         (self.tile_dimensions.width ) * (self.tile_dimensions.height)
     }
+        /// Calculate dimensions-based hash code (аналог Java dimensionsBasedHashCode)
+    pub fn dimensions_based_hash_code(&self) -> i32 {
+        self.tile_dimensions.dimensions_based_hash_code()
+    }
 }
 
 impl std::fmt::Display for GroupedTileDimensions {

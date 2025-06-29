@@ -4,13 +4,7 @@ use rezalnyas_core::{
         cut_orientation_preference::CutOrientationPreference,
         optimization_priority::OptimizationPriority, status::Status,
     }, log_debug, log_error, log_info, log_warn, logging::{init_logging, LogConfig, LogLevel}, models::{
-        calculation_request::CalculationRequest,
-        configuration::Configuration,
-        grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions},
-        panel::structs::Panel,
-        performance_thresholds::PerformanceThresholds,
-        task::structs::Task,
-        tile_dimensions::{generate_groups, TileDimensions},
+        calculation_request::CalculationRequest, configuration::Configuration, grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions}, panel::structs::Panel, performance_thresholds::PerformanceThresholds, task::structs::Task, tile::tile_conversion::grouped_tile_dimensions_list_to_tile_dimensions_list, tile_dimensions::{count_duplicate_permutations, generate_groups, remove_duplicated_permutations, TileDimensions}
     }, scaled_math::{PrecisionAnalyzer, ScaledConverter, ScaledNumber}, services::arrangement::generate_permutations, CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy
 };
 const MAX_ALLOWED_DIGITS: u8 = 6;
@@ -339,6 +333,113 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     if list_generate_permutations.len() > 3 {
         log_debug!("... and {} more permutations", list_generate_permutations.len() - 3);
+    }
+
+
+
+    /*
+     * Преобразование перестановок в списки панелей
+     * 
+     * Преобразуем каждую перестановку групп обратно в последовательность отдельных панелей
+     * Теперь sorted_tile_lists содержит различные порядки размещения панелей
+     */
+    
+    log_debug!("Task[{}] Sorting tiles according to permutations...", task.id);
+    
+
+    let mut sorted_tile_lists: Vec<Vec<TileDimensions>> = Vec::new();
+    
+    for permutation in &list_generate_permutations {
+        let sorted_tiles = grouped_tile_dimensions_list_to_tile_dimensions_list(
+            permutation,
+            &list_generate_groups
+        );
+        sorted_tile_lists.push(sorted_tiles);
+    }
+    
+    log_debug!(
+        "Task[{}] Created {} sorted tile lists from permutations",
+        task.id,
+        sorted_tile_lists.len()
+    );
+    
+    log_info!(
+        "Created {} sorted tile arrangements from permutations",
+        sorted_tile_lists.len()
+    );
+    
+    // Логирование первых нескольких отсортированных списков для отладки
+    for (i, sorted_list) in sorted_tile_lists.iter().take(2).enumerate() {
+        let tiles_info: String = sorted_list
+            .iter()
+            .take(5) // Показываем первые 5 плиток
+            .map(|tile| format!("{}[{}x{}]", tile.id, tile.width, tile.height))
+            .collect::<Vec<_>>()
+            .join(" ");
+        
+        log_debug!(
+            "SortedList[{}] ({} tiles): {} {}",
+            i,
+            sorted_list.len(),
+            tiles_info,
+            if sorted_list.len() > 5 { "..." } else { "" }
+        );
+    }
+    
+    if sorted_tile_lists.len() > 2 {
+        log_debug!("... and {} more sorted tile lists", sorted_tile_lists.len() - 2);
+    }
+
+
+    /*
+     * Удаление дублирующих перестановок
+     * 
+     * Удаляем перестановки, которые приводят к одинаковым результатам
+     * Это экономит время вычислений
+     */
+    
+    log_debug!("Task[{}] Removing duplicated permutations...", task.id);
+    
+
+    // Сначала подсчитаем дубликаты для статистики
+    let (total_before, unique_before, duplicates_before) = count_duplicate_permutations(&sorted_tile_lists);
+    
+    log_debug!(
+        "Task[{}] Before deduplication: {} total permutations, {} unique, {} duplicates",
+        task.id,
+        total_before,
+        unique_before,
+        duplicates_before
+    );
+    
+    // Удаляем дублированные перестановки
+    let removed_count = remove_duplicated_permutations(&mut sorted_tile_lists);
+    
+    log_debug!(
+        "Task[{}] After deduplication: {} permutations remaining ({} removed)",
+        task.id,
+        sorted_tile_lists.len(),
+        removed_count
+    );
+    
+    log_info!(
+        "Removed {} duplicate permutations, {} unique arrangements remaining",
+        removed_count,
+        sorted_tile_lists.len()
+    );
+    
+    // Логирование эффективности дедупликации
+    if total_before > 0 {
+        let efficiency_percent = (removed_count as f64 / total_before as f64) * 100.0;
+        log_debug!(
+            "Task[{}] Deduplication efficiency: {:.1}% duplicates removed",
+            task.id,
+            efficiency_percent
+        );
+        
+        if efficiency_percent > 10.0 {
+            log_debug!("Task[{}] High deduplication efficiency - significant optimization achieved", task.id);
+        }
     }
     Ok(())
 }
