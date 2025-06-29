@@ -4,11 +4,13 @@ use rezalnyas_core::{
         cut_orientation_preference::CutOrientationPreference,
         optimization_priority::OptimizationPriority, status::Status,
     }, log_debug, log_error, log_info, log_warn, logging::{init_logging, LogConfig, LogLevel}, models::{
-        calculation_request::CalculationRequest, configuration::Configuration, grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions}, panel::structs::Panel, performance_thresholds::PerformanceThresholds, task::structs::Task, tile::tile_conversion::grouped_tile_dimensions_list_to_tile_dimensions_list, tile_dimensions::{count_duplicate_permutations, generate_groups, remove_duplicated_permutations, TileDimensions}
+        calculation_request::CalculationRequest, configuration::Configuration, grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions}, panel::structs::Panel, performance_thresholds::PerformanceThresholds, task::structs::Task, tile::tile_conversion::grouped_tile_dimensions_list_to_tile_dimensions_list, tile_dimensions::{count_duplicate_permutations, generate_groups, generate_groups_improved, generate_groups_java_compatible, remove_duplicated_permutations, remove_duplicated_permutations_java_compatible, TileDimensions}
     }, scaled_math::{PrecisionAnalyzer, ScaledConverter, ScaledNumber}, services::arrangement::generate_permutations, CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy
 };
+
 const MAX_ALLOWED_DIGITS: u8 = 6;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut unique_tile_id = 1u8;
     println!("🐛 DEBUG MODE: Single-threaded optimization");
     println!(
         "💻 Available cores: {}",
@@ -22,33 +24,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         level: LogLevel::Debug,
     });
 
-    // Примеры использования
     log_info!("Приложение запущено");
-    log_debug!("Отладочная информация");
-    log_warn!("Предупреждение");
-    log_error!("Ошибка");
 
     let panels: Vec<Panel> = vec![
-        Panel::new(1, "55.123".to_string(), "45.0".to_string(), 1),
-        Panel::new(2, "35.12".to_string(), "25.0".to_string(), 1),
-        Panel::new(3, "25.1".to_string(), "15.0".to_string(), 1),
-        Panel::new(4, "15.000".to_string(), "20.0".to_string(), 1),
-        Panel::new(5, "40.0".to_string(), "30.0".to_string(), 1),
+        // Деталь 1: 150.5x100.25 (2 шт)
+        Panel::new(1, "150.5".to_string(), "100.25".to_string(), 2),
+        // Деталь 2: 80.75x60.5 (3 шт)
+        Panel::new(2, "80.75".to_string(), "60.5".to_string(), 3),
+        // Деталь 3: 120.0x45.75 (1 шт)
+        Panel::new(3, "120.0".to_string(), "45.75".to_string(), 1),
+        // Деталь 4: 95.25x75.5 (2 шт)
+        Panel::new(4, "95.25".to_string(), "75.5".to_string(), 2),
+        // Деталь 5: 65.5x85.25 (1 шт)
+        Panel::new(5, "65.5".to_string(), "85.25".to_string(), 1),
+        // Деталь 6: 110.75x55.0 (2 шт)
+        Panel::new(6, "110.75".to_string(), "55.0".to_string(), 2),
+        // Деталь 7: 40.25x90.5 (3 шт)
+        Panel::new(7, "40.25".to_string(), "90.5".to_string(), 3),
+        // Деталь 8: 130.0x35.75 (1 шт)
+        Panel::new(8, "130.0".to_string(), "35.75".to_string(), 1),
     ];
+
+    // Одна заготовка (такая же как в Java)
     let stock_panels: Vec<Panel> = vec![Panel::new(
         1,
-        "90.0255".to_string(),
-        "120.01".to_string(),
+        "400.0".to_string(),
+        "300.0".to_string(),
         1,
     )];
 
     let config = Configuration {
-        cut_thickness: 0.0,           // Точная толщина реза
-        use_single_stock_unit: false, // Разрешаем использовать разные листы
+        cut_thickness: 0.0,
+        use_single_stock_unit: false,
         optimization_factor: 2,
-        // in java = 0
         optimization_priority: vec![
-            // Приоритеты оптимизации
             OptimizationPriority::MostTiles,
             OptimizationPriority::LeastWastedArea,
             OptimizationPriority::LeastNbrCuts,
@@ -72,8 +81,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stock_panels,
     };
 
-    // submitTask в основном валидация входных данных и подготовка задачи
-    // compute
+    println!("Создан запрос:");
+    println!("- Деталей: {}", request.panels.len());
+    println!("- Заготовка: {}x{}", 
+        request.stock_panels[0].width, 
+        request.stock_panels[0].height);
+
+    // Вычисление точности
     let panels = &request.panels;
     let stock_panels = &request.stock_panels;
     let configuration = &request.configuration;
@@ -147,7 +161,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let height_scaled = ScaledNumber::from_str(&panel.height, final_precision)?;
 
             let tile = TileDimensions {
-                id: panel.id,
+             id: unique_tile_id, // КАЖДАЯ ДЕТАЛЬ ПОЛУЧАЕТ УНИКАЛЬНЫЙ ID
                 width: width_scaled.raw_value() as u64,
                 height: height_scaled.raw_value() as u64,
                 orientation: panel.orientation,
@@ -155,6 +169,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             tiles.push(tile);
+           unique_tile_id += 1; // Увеличиваем ID для следующей детали
         }
     }
 
@@ -165,7 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let height_scaled = ScaledNumber::from_str(&stock_panel.height, final_precision)?;
 
             let stock_tile = TileDimensions {
-                id: stock_panel.id,
+       id: unique_tile_id, // КАЖДАЯ ЗАГОТОВКА ПОЛУЧАЕТ УНИКАЛЬНЫЙ ID
                 width: width_scaled.raw_value() as u64,
                 height: height_scaled.raw_value() as u64,
 
@@ -190,7 +205,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Генерация групп
-    let list_generate_groups = generate_groups(&tiles, &stock_tiles, &task);
+    let list_generate_groups = generate_groups_java_compatible(&tiles, &stock_tiles, &task);
 //получаем уникальные группы
     let distinct_grouped_tile_dimensions =
         get_distinct_grouped_tile_dimensions(&list_generate_groups, &configuration);
@@ -413,7 +428,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     
     // Удаляем дублированные перестановки
-    let removed_count = remove_duplicated_permutations(&mut sorted_tile_lists);
+    let removed_count = remove_duplicated_permutations_java_compatible(&mut sorted_tile_lists);
     
     log_debug!(
         "Task[{}] After deduplication: {} permutations remaining ({} removed)",
@@ -441,5 +456,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             log_debug!("Task[{}] High deduplication efficiency - significant optimization achieved", task.id);
         }
     }
+
+    log_info!("\n=== Алгоритм выполнен успешно ===");
+    log_info!("Обработано {} деталей", tiles.len());
+    log_info!("Создано {} вариантов размещения", sorted_tile_lists.len());
+
     Ok(())
 }
