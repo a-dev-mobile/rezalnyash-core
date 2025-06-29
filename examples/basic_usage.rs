@@ -2,19 +2,19 @@ use rayon::vec;
 use rezalnyas_core::{
     enums::{
         cut_orientation_preference::CutOrientationPreference,
-        optimization_priority::OptimizationPriority, status::Status,
+       status::Status,
     },
     log_debug, log_error, log_info, log_warn,
     logging::{init_logging, LogConfig, LogLevel},
     models::{
-        calculation_request::CalculationRequest, configuration::Configuration, grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions}, panel::structs::Panel, performance_thresholds::PerformanceThresholds, permutation_thread_spawner::{PermutationThreadSpawner, ProgressTracker}, stock_solution::StockPanelPicker, task::Task, tile::tile_conversion::grouped_tile_dimensions_list_to_tile_dimensions_list, tile_dimensions::{
+        calculation_request::CalculationRequest, configuration::Configuration, grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions}, panel::structs::Panel, performance_thresholds::PerformanceThresholds, permutation_thread_spawner::{PermutationThreadSpawner, ProgressTracker}, solution::Solution, stock_solution::StockPanelPicker, task::Task, tile::tile_conversion::grouped_tile_dimensions_list_to_tile_dimensions_list, tile_dimensions::{
             count_duplicate_permutations, generate_groups, generate_groups_improved,
             generate_groups_java_compatible, remove_duplicated_permutations,
             remove_duplicated_permutations_java_compatible, TileDimensions,
         }
     },
     scaled_math::{PrecisionAnalyzer, ScaledConverter, ScaledNumber},
-    services::arrangement::generate_permutations,
+    services::{arrangement::generate_permutations, computation::{process_permutation_with_all_stock_solutions, OptimizationPriority}},
     CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy,
 };
 
@@ -737,3 +737,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     Ok(())
 }
+
+
+
+
+

@@ -1,20 +1,17 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    enums::{
-        cut_orientation_preference::CutOrientationPreference,
-        optimization_priority::OptimizationPriority,
-    },
-    models::performance_thresholds::PerformanceThresholds,
+    enums::cut_orientation_preference::CutOrientationPreference,
+    models::performance_thresholds::PerformanceThresholds, services::computation::OptimizationPriority,
 };
 
 #[derive(Debug, Clone)]
 pub struct Configuration {
     /// Thickness of the cutting blade (kerf)
-    pub cut_thickness: f32,
+    pub cut_thickness: f64,
 
     /// Minimum trim dimension (waste edge)
-    pub min_trim_dimension: f32,
+    pub min_trim_dimension: f64,
 
     /// Whether to consider grain orientation
     pub consider_orientation: bool,
