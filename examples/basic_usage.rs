@@ -3,9 +3,19 @@ use rezalnyas_core::{
     enums::{
         cut_orientation_preference::CutOrientationPreference,
         optimization_priority::OptimizationPriority, status::Status,
-    }, log_debug, log_error, log_info, log_warn, logging::{init_logging, LogConfig, LogLevel}, models::{
-        calculation_request::CalculationRequest, configuration::Configuration, grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions}, panel::structs::Panel, performance_thresholds::PerformanceThresholds, task::structs::Task, tile::tile_conversion::grouped_tile_dimensions_list_to_tile_dimensions_list, tile_dimensions::{count_duplicate_permutations, generate_groups, generate_groups_improved, generate_groups_java_compatible, remove_duplicated_permutations, remove_duplicated_permutations_java_compatible, TileDimensions}
-    }, scaled_math::{PrecisionAnalyzer, ScaledConverter, ScaledNumber}, services::arrangement::generate_permutations, CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy
+    },
+    log_debug, log_error, log_info, log_warn,
+    logging::{init_logging, LogConfig, LogLevel},
+    models::{
+        calculation_request::CalculationRequest, configuration::Configuration, grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions}, panel::structs::Panel, performance_thresholds::PerformanceThresholds, stock_solution::StockPanelPicker, task::Task, tile::tile_conversion::grouped_tile_dimensions_list_to_tile_dimensions_list, tile_dimensions::{
+            count_duplicate_permutations, generate_groups, generate_groups_improved,
+            generate_groups_java_compatible, remove_duplicated_permutations,
+            remove_duplicated_permutations_java_compatible, TileDimensions,
+        }
+    },
+    scaled_math::{PrecisionAnalyzer, ScaledConverter, ScaledNumber},
+    services::arrangement::generate_permutations,
+    CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy,
 };
 
 const MAX_ALLOWED_DIGITS: u8 = 6;
@@ -46,12 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     // Одна заготовка (такая же как в Java)
-    let stock_panels: Vec<Panel> = vec![Panel::new(
-        1,
-        "400.0".to_string(),
-        "300.0".to_string(),
-        1,
-    )];
+    let stock_panels: Vec<Panel> = vec![Panel::new(1, "400.0".to_string(), "300.0".to_string(), 1)];
 
     let config = Configuration {
         cut_thickness: 0.0,
@@ -83,9 +88,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Создан запрос:");
     println!("- Деталей: {}", request.panels.len());
-    println!("- Заготовка: {}x{}", 
-        request.stock_panels[0].width, 
-        request.stock_panels[0].height);
+    println!(
+        "- Заготовка: {}x{}",
+        request.stock_panels[0].width, request.stock_panels[0].height
+    );
 
     // Вычисление точности
     let panels = &request.panels;
@@ -161,7 +167,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let height_scaled = ScaledNumber::from_str(&panel.height, final_precision)?;
 
             let tile = TileDimensions {
-             id: unique_tile_id, // КАЖДАЯ ДЕТАЛЬ ПОЛУЧАЕТ УНИКАЛЬНЫЙ ID
+                id: unique_tile_id, // КАЖДАЯ ДЕТАЛЬ ПОЛУЧАЕТ УНИКАЛЬНЫЙ ID
                 width: width_scaled.raw_value() as u64,
                 height: height_scaled.raw_value() as u64,
                 orientation: panel.orientation,
@@ -169,7 +175,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             tiles.push(tile);
-           unique_tile_id += 1; // Увеличиваем ID для следующей детали
+            unique_tile_id += 1; // Увеличиваем ID для следующей детали
         }
     }
 
@@ -180,7 +186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let height_scaled = ScaledNumber::from_str(&stock_panel.height, final_precision)?;
 
             let stock_tile = TileDimensions {
-       id: unique_tile_id, // КАЖДАЯ ЗАГОТОВКА ПОЛУЧАЕТ УНИКАЛЬНЫЙ ID
+                id: unique_tile_id, // КАЖДАЯ ЗАГОТОВКА ПОЛУЧАЕТ УНИКАЛЬНЫЙ ID
                 width: width_scaled.raw_value() as u64,
                 height: height_scaled.raw_value() as u64,
 
@@ -206,7 +212,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Генерация групп
     let list_generate_groups = generate_groups_java_compatible(&tiles, &stock_tiles, &task);
-//получаем уникальные группы
+    //получаем уникальные группы
     let distinct_grouped_tile_dimensions =
         get_distinct_grouped_tile_dimensions(&list_generate_groups, &configuration);
     log_debug!("Task[{}] Calculating permutations...", task.id);
@@ -222,7 +228,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Distinct groups: {}",
         distinct_grouped_tile_dimensions.len()
     );
- //  Создание отсортированного списка ключей
+    //  Создание отсортированного списка ключей
     let mut sorted_grouped_tiles: Vec<GroupedTileDimensions> =
         distinct_grouped_tile_dimensions.keys().cloned().collect();
 
@@ -296,44 +302,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         log_debug!("Remaining[{}]: {} area={}", i, tile, tile.get_area());
     }
 
-
-
-     /*
+    /*
      * Генерация перестановок
-     * 
+     *
      * Генерируем все возможные перестановки первых 7 групп
      * К каждой перестановке добавляем оставшиеся группы в исходном порядке
      */
-    
-    
+
     // Генерируем все перестановки для групп permutation_tiles
     let mut list_generate_permutations = generate_permutations(permutation_tiles);
-    
+
     log_debug!(
         "Task[{}] Generated {} permutations from {} groups",
         task.id,
         list_generate_permutations.len(),
         list_generate_permutations.first().map_or(0, |p| p.len())
     );
-    
+
     // К каждой перестановке добавляем оставшиеся группы в исходном порядке
     for permutation in &mut list_generate_permutations {
         permutation.extend_from_slice(&remaining_tiles);
     }
-    
+
     log_debug!(
         "Task[{}] Final permutations: {} permutations with {} total groups each",
         task.id,
         list_generate_permutations.len(),
         list_generate_permutations.first().map_or(0, |p| p.len())
     );
-    
+
     log_info!(
         "Generated {} total permutations with {} groups each",
         list_generate_permutations.len(),
         list_generate_permutations.first().map_or(0, |p| p.len())
     );
-    
+
     // Логирование первых нескольких перестановок для отладки
     for (i, permutation) in list_generate_permutations.iter().take(3).enumerate() {
         let perm_info: String = permutation
@@ -342,47 +345,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|(j, group)| format!("{}[area={}]", j, group.get_area()))
             .collect::<Vec<_>>()
             .join(" ");
-        
+
         log_debug!("Permutation[{}]: {}", i, perm_info);
     }
-    
+
     if list_generate_permutations.len() > 3 {
-        log_debug!("... and {} more permutations", list_generate_permutations.len() - 3);
+        log_debug!(
+            "... and {} more permutations",
+            list_generate_permutations.len() - 3
+        );
     }
-
-
 
     /*
      * Преобразование перестановок в списки панелей
-     * 
+     *
      * Преобразуем каждую перестановку групп обратно в последовательность отдельных панелей
      * Теперь sorted_tile_lists содержит различные порядки размещения панелей
      */
-    
-    log_debug!("Task[{}] Sorting tiles according to permutations...", task.id);
-    
+
+    log_debug!(
+        "Task[{}] Sorting tiles according to permutations...",
+        task.id
+    );
 
     let mut sorted_tile_lists: Vec<Vec<TileDimensions>> = Vec::new();
-    
+
     for permutation in &list_generate_permutations {
         let sorted_tiles = grouped_tile_dimensions_list_to_tile_dimensions_list(
             permutation,
-            &list_generate_groups
+            &list_generate_groups,
         );
         sorted_tile_lists.push(sorted_tiles);
     }
-    
+
     log_debug!(
         "Task[{}] Created {} sorted tile lists from permutations",
         task.id,
         sorted_tile_lists.len()
     );
-    
+
     log_info!(
         "Created {} sorted tile arrangements from permutations",
         sorted_tile_lists.len()
     );
-    
+
     // Логирование первых нескольких отсортированных списков для отладки
     for (i, sorted_list) in sorted_tile_lists.iter().take(2).enumerate() {
         let tiles_info: String = sorted_list
@@ -391,7 +397,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|tile| format!("{}[{}x{}]", tile.id, tile.width, tile.height))
             .collect::<Vec<_>>()
             .join(" ");
-        
+
         log_debug!(
             "SortedList[{}] ({} tiles): {} {}",
             i,
@@ -400,25 +406,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if sorted_list.len() > 5 { "..." } else { "" }
         );
     }
-    
-    if sorted_tile_lists.len() > 2 {
-        log_debug!("... and {} more sorted tile lists", sorted_tile_lists.len() - 2);
-    }
 
+    if sorted_tile_lists.len() > 2 {
+        log_debug!(
+            "... and {} more sorted tile lists",
+            sorted_tile_lists.len() - 2
+        );
+    }
 
     /*
      * Удаление дублирующих перестановок
-     * 
+     *
      * Удаляем перестановки, которые приводят к одинаковым результатам
      * Это экономит время вычислений
      */
-    
+
     log_debug!("Task[{}] Removing duplicated permutations...", task.id);
-    
 
     // Сначала подсчитаем дубликаты для статистики
-    let (total_before, unique_before, duplicates_before) = count_duplicate_permutations(&sorted_tile_lists);
-    
+    let (total_before, unique_before, duplicates_before) =
+        count_duplicate_permutations(&sorted_tile_lists);
+
     log_debug!(
         "Task[{}] Before deduplication: {} total permutations, {} unique, {} duplicates",
         task.id,
@@ -426,23 +434,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         unique_before,
         duplicates_before
     );
-    
+
     // Удаляем дублированные перестановки
     let removed_count = remove_duplicated_permutations_java_compatible(&mut sorted_tile_lists);
-    
+
     log_debug!(
         "Task[{}] After deduplication: {} permutations remaining ({} removed)",
         task.id,
         sorted_tile_lists.len(),
         removed_count
     );
-    
+
     log_info!(
         "Removed {} duplicate permutations, {} unique arrangements remaining",
         removed_count,
         sorted_tile_lists.len()
     );
-    
+
     // Логирование эффективности дедупликации
     if total_before > 0 {
         let efficiency_percent = (removed_count as f64 / total_before as f64) * 100.0;
@@ -451,15 +459,223 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             task.id,
             efficiency_percent
         );
-        
+
         if efficiency_percent > 10.0 {
-            log_debug!("Task[{}] High deduplication efficiency - significant optimization achieved", task.id);
+            log_debug!(
+                "Task[{}] High deduplication efficiency - significant optimization achieved",
+                task.id
+            );
         }
     }
 
     log_info!("\n=== Алгоритм выполнен успешно ===");
     log_info!("Обработано {} деталей", tiles.len());
     log_info!("Создано {} вариантов размещения", sorted_tile_lists.len());
+
+
+
+
+
+
+
+
+
+        /*
+         * Установка статуса и инициализация генератора листов
+         * 
+         * Помечаем задачу как выполняющуюся
+         * Создаем генератор комбинаций исходных листов
+         * Инициализируем его (запускается отдельный поток для генерации вариантов листов)
+         */
+        
+        // Устанавливаем статус задачи как "выполняющаяся"
+        task.status = Status::Running;
+        
+        // Определяем максимальное количество листов (если включен режим одного листа)
+        let max_stock_units = if configuration.use_single_stock_unit {
+            Some(1)
+        } else {
+            None
+        };
+        
+        // Создаем генератор комбинаций листов
+        let mut stock_panel_picker = StockPanelPicker::new(
+            tiles.clone(),
+            stock_tiles.clone(), 
+            task.clone(),
+            max_stock_units
+        );
+        
+        // Инициализируем генератор (запускает отдельный поток)
+        stock_panel_picker.init(tiles.clone(), stock_tiles.clone(), max_stock_units);
+        
+        log_debug!(
+            "Task[{}] Initialized stock panel picker with {} stock tile types",
+            task.id,
+            stock_tiles.len()
+        );
+
+        /*
+         * Расчет размера пула решений
+         * 
+         * Определяем размер пула лучших решений, которые будем хранить
+         * Базовый размер = 100 * коэффициент оптимизации из конфигурации
+         * Если панелей много (>100), уменьшаем размер пула для экономии памяти
+         */
+
+        let mut optimization_factor = if configuration.optimization_factor > 0 {
+            (100 * configuration.optimization_factor) as i32
+        } else {
+            100
+        };
+        
+        if tiles.len() > 100 {
+            optimization_factor = (optimization_factor as f64 * (0.5 / (tiles.len() as f64 / 100.0))) as i32;
+            log_info!(
+                "Limiting solution pool elements to [{}]", 
+                optimization_factor
+            );
+        }
+
+        log_info!(
+            "Using optimization factor: {}, solution pool size: {}",
+            configuration.optimization_factor,
+            optimization_factor
+        );
+
+        // /*
+        //  * Основной цикл обработки перестановок
+        //  * 
+        //  * Цикл по каждой перестановке панелей
+        //  * Для каждой перестановки пробуем разные комбинации листов
+        //  */
+
+        // let max_permutations_with_solution = 150;
+        // let mut permutation_count = 0;
+
+        // for (permutation_idx, tile_arrangement) in sorted_tile_lists.iter().enumerate() {
+        //     // Проверяем, не остановлена ли задача
+        //     if task.status != Status::Running {
+        //         log_debug!(
+        //             "Task no longer has running status. Stopping at permutation[{}]",
+        //             permutation_idx
+        //         );
+        //         break;
+        //     }
+
+        //     // Если уже найдено решение "все панели помещаются" и обработано достаточно перестановок
+        //     if task.has_solution_all_fit() && permutation_count > max_permutations_with_solution {
+        //         log_debug!(
+        //             "Task has solution and processed max permutations. Stopping at permutation[{}]",
+        //             permutation_idx
+        //         );
+        //         break;
+        //     }
+
+        //     log_debug!(
+        //         "Processing permutation[{}/{}]",
+        //         permutation_idx + 1,
+        //         sorted_tile_lists.len()
+        //     );
+
+        //     /*
+        //      * Внутренний цикл по комбинациям листов
+        //      * 
+        //      * Для каждой перестановки панелей пробуем разные комбинации исходных листов
+        //      * Ограничиваем количество вариантов для разумного времени выполнения
+        //      */
+
+        //     let max_stock_iterations = 1000;
+        //     let mut stock_iteration = 0;
+
+        //     while stock_iteration < max_stock_iterations {
+        //         // Получаем следующую комбинацию листов
+        //         let stock_solution = match stock_panel_picker.get_stock_solution(stock_iteration) {
+        //             Some(solution) => solution,
+        //             None => {
+        //                 log_debug!(
+        //                     "No more possible stock solutions: stockSolution[{}] permutation[{}]",
+        //                     stock_iteration,
+        //                     permutation_idx
+        //                 );
+        //                 break;
+        //             }
+        //         };
+
+        //         // Проверяем, не остановлена ли задача
+        //         if task.status != Status::Running {
+        //             log_debug!(
+        //                 "Task no longer has running status. Stopping stock loop for permutation[{}]",
+        //                 permutation_idx
+        //             );
+        //             break;
+        //         }
+
+        //         log_debug!(
+        //             "Starting permutation[{}/{}] with stock solution [{}] {{nbrPanels[{}] area[{}] {}}}",
+        //             permutation_idx + 1,
+        //             sorted_tile_lists.len(),
+        //             stock_iteration,
+        //             stock_solution.get_stock_tile_dimensions().len(),
+        //             stock_solution.get_total_area(),
+        //             stock_solution
+        //         );
+
+        //         /*
+        //          * Здесь будет вызов реального алгоритма размещения панелей на листах
+        //          * 
+        //          * TODO: Реализовать алгоритм раскроя:
+        //          * 1. Создать CutListThread для данной комбинации перестановки и листов
+        //          * 2. Запустить алгоритм размещения
+        //          * 3. Сохранить результат в список решений
+        //          * 4. Обновить лучшее решение если найдено лучше
+        //          */
+
+        //         // Пока что просто логируем, что мы обработали эту комбинацию
+        //         log_debug!(
+        //             "TODO: Process tile arrangement with stock solution - permutation[{}] stock[{}]",
+        //             permutation_idx,
+        //             stock_iteration
+        //         );
+
+        //         stock_iteration += 1;
+        //     }
+
+        //     permutation_count += 1;
+        // }
+
+        // /*
+        //  * Финализация
+        //  * 
+        //  * Устанавливаем статус задачи как завершенная
+        //  * Логируем итоговую статистику
+        //  */
+
+        // if task.status == Status::Running {
+        //     task.status = Status::Finished;
+        // }
+
+        // log_info!(
+        //     "Task[{}] Processing completed. Status: {:?}",
+        //     task.id,
+        //     task.status
+        // );
+
+        // log_info!("\n=== Подготовка к раскрою завершена ===");
+        // log_info!("Обработано {} перестановок панелей", permutation_count);
+        // log_info!("Сгенерированы варианты комбинаций листов");
+        // log_info!("Готово к реализации алгоритма размещения панелей");
+
+
+
+
+
+
+
+
+
+
+
 
     Ok(())
 }
