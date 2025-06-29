@@ -11,7 +11,7 @@ use crate::{
     models::{
         calculation_request::structs::CalculationRequest, configuration::Configuration,
         grouped_tile_dimensions::GroupedTileDimensions,
-        performance_thresholds::structs::PerformanceThresholds, task::structs::Task,
+        performance_thresholds::structs::PerformanceThresholds, task::Task,
     },
 };
 
@@ -86,7 +86,7 @@ pub fn generate_groups_improved(
     // Определяем максимальный размер группы
     let base_group_size = std::cmp::max(tiles.len() / 100, 1);
     let is_one_dim = is_one_dimensional_optimization(tiles, sheet_tiles);
-    
+
     if is_one_dim {
         log_debug!("Task[{}] is one dimensional optimization", task.id);
     }
@@ -104,20 +104,20 @@ pub fn generate_groups_improved(
     // Обрабатываем каждый тип деталей
     for ((width, height), mut tiles_of_type) in tiles_by_type {
         let total_count = tiles_of_type.len();
-        
+
         // Для одномерной оптимизации или малого количества деталей - одна группа
         let effective_group_size = if is_one_dim || total_count <= 2 {
             total_count // Все детали в одну группу
         } else {
             std::cmp::max(base_group_size, total_count / 2) // Максимум 2 группы на тип
         };
-        
+
         if total_count <= effective_group_size {
             // Все детали данного типа помещаются в одну группу
             for tile in tiles_of_type {
                 result.push(GroupedTileDimensions::new(tile, current_group_id));
             }
-            
+
             log_debug!(
                 "Task[{}] Created single group {} for {}x{} ({} tiles)",
                 task.id,
@@ -126,38 +126,41 @@ pub fn generate_groups_improved(
                 height,
                 total_count
             );
-            
+
             current_group_id += 1;
         } else {
             // Разбиваем на группы, но не больше чем на 2
-            let groups_needed = std::cmp::min(2, (total_count + effective_group_size - 1) / effective_group_size);
+            let groups_needed = std::cmp::min(
+                2,
+                (total_count + effective_group_size - 1) / effective_group_size,
+            );
             let tiles_per_group = total_count / groups_needed;
             let mut extra_tiles = total_count % groups_needed;
-            
+
             let mut groups_created = 0;
             let mut tiles_processed = 0;
-            
+
             for group_idx in 0..groups_needed {
                 let mut current_group_size = tiles_per_group;
                 if extra_tiles > 0 {
                     current_group_size += 1;
                     extra_tiles -= 1;
                 }
-                
+
                 for _ in 0..current_group_size {
                     if tiles_processed < tiles_of_type.len() {
                         result.push(GroupedTileDimensions::new(
-                            tiles_of_type[tiles_processed].clone(), 
-                            current_group_id
+                            tiles_of_type[tiles_processed].clone(),
+                            current_group_id,
                         ));
                         tiles_processed += 1;
                     }
                 }
-                
+
                 groups_created += 1;
                 current_group_id += 1;
             }
-            
+
             log_debug!(
                 "Task[{}] Split {}x{} ({} tiles) into {} groups",
                 task.id,
@@ -243,7 +246,7 @@ pub fn generate_groups(
 }
 
 /// Generate groups of tiles for optimization - Java-compatible version
-/// 
+///
 /// Это точная копия Java-алгоритма из CutListOptimizerServiceImpl.generateGroups()
 pub fn generate_groups_java_compatible(
     tiles: &[TileDimensions],
@@ -288,7 +291,7 @@ pub fn generate_groups_java_compatible(
     for tile in tiles {
         // Java: String str2 = tileDimensions.toString() + i;
         let group_key = format!("{}{}", tile.to_string(), current_group);
-        
+
         // Java: map2.put(str2, Integer.valueOf(map2.get(str2) != null ? ((Integer) map2.get(str2)).intValue() + 1 : 1));
         let group_count = group_counts.entry(group_key.clone()).or_insert(0);
         *group_count += 1;
@@ -297,7 +300,7 @@ pub fn generate_groups_java_compatible(
         result.push(GroupedTileDimensions::new(tile.clone(), current_group));
 
         // Check if we should split into a new group
-        // Java: if (((Integer) map.get(tileDimensions.toString())).intValue() > iMax && 
+        // Java: if (((Integer) map.get(tileDimensions.toString())).intValue() > iMax &&
         //          ((Integer) map2.get(str2)).intValue() > ((Integer) map.get(tileDimensions.toString())).intValue() / 4)
         //
         // ВАЖНО: И для подсчета, и для проверки используется tile.toString()!
@@ -306,7 +309,7 @@ pub fn generate_groups_java_compatible(
                 log_debug!(
                     "Task[{}] Splitting panel set [{}] with [{}] units into two groups",
                     task.id,
-                    tile.dimensions_to_string(),  // Только для логирования
+                    tile.dimensions_to_string(), // Только для логирования
                     total_count
                 );
                 current_group += 1; // Java: i++;
@@ -339,17 +342,21 @@ fn is_one_dimensional_optimization(
         //     arrayList.remove(0);
         // }
         if !common_dimensions.is_empty() {
-            if common_dimensions[0] != tile.width as i32 && common_dimensions[0] != tile.height as i32 {
+            if common_dimensions[0] != tile.width as i32
+                && common_dimensions[0] != tile.height as i32
+            {
                 common_dimensions.remove(0);
             }
         }
-        
+
         if common_dimensions.len() == 2 {
-            if common_dimensions[1] != tile.width as i32 && common_dimensions[1] != tile.height as i32 {
+            if common_dimensions[1] != tile.width as i32
+                && common_dimensions[1] != tile.height as i32
+            {
                 common_dimensions.remove(1);
             }
         }
-        
+
         if common_dimensions.is_empty() {
             return false;
         }
@@ -359,17 +366,21 @@ fn is_one_dimensional_optimization(
     // Java: for (TileDimensions tileDimensions2 : list2)
     for sheet_tile in sheet_tiles {
         if !common_dimensions.is_empty() {
-            if common_dimensions[0] != sheet_tile.width as i32 && common_dimensions[0] != sheet_tile.height as i32 {
+            if common_dimensions[0] != sheet_tile.width as i32
+                && common_dimensions[0] != sheet_tile.height as i32
+            {
                 common_dimensions.remove(0);
             }
         }
-        
+
         if common_dimensions.len() == 2 {
-            if common_dimensions[1] != sheet_tile.width as i32 && common_dimensions[1] != sheet_tile.height as i32 {
+            if common_dimensions[1] != sheet_tile.width as i32
+                && common_dimensions[1] != sheet_tile.height as i32
+            {
                 common_dimensions.remove(1);
             }
         }
-        
+
         if common_dimensions.is_empty() {
             return false;
         }
@@ -377,7 +388,6 @@ fn is_one_dimensional_optimization(
 
     true
 }
-
 
 pub fn remove_duplicated_permutations(permutation_lists: &mut Vec<Vec<TileDimensions>>) -> usize {
     let mut seen_hash_codes = HashSet::new();
@@ -773,151 +783,210 @@ mod tests {
     fn create_test_tiles() -> Vec<TileDimensions> {
         vec![
             // 2 детали 150x100
-            TileDimensions { id: 1, width: 15000, height: 10000, orientation: Orientation::Default, is_rotated: false },
-            TileDimensions { id: 1, width: 15000, height: 10000, orientation: Orientation::Default, is_rotated: false },
+            TileDimensions {
+                id: 1,
+                width: 15000,
+                height: 10000,
+                orientation: Orientation::Default,
+                is_rotated: false,
+            },
+            TileDimensions {
+                id: 1,
+                width: 15000,
+                height: 10000,
+                orientation: Orientation::Default,
+                is_rotated: false,
+            },
             // 3 детали 80x60
-            TileDimensions { id: 2, width: 8000, height: 6000, orientation: Orientation::Default, is_rotated: false },
-            TileDimensions { id: 2, width: 8000, height: 6000, orientation: Orientation::Default, is_rotated: false },
-            TileDimensions { id: 2, width: 8000, height: 6000, orientation: Orientation::Default, is_rotated: false },
+            TileDimensions {
+                id: 2,
+                width: 8000,
+                height: 6000,
+                orientation: Orientation::Default,
+                is_rotated: false,
+            },
+            TileDimensions {
+                id: 2,
+                width: 8000,
+                height: 6000,
+                orientation: Orientation::Default,
+                is_rotated: false,
+            },
+            TileDimensions {
+                id: 2,
+                width: 8000,
+                height: 6000,
+                orientation: Orientation::Default,
+                is_rotated: false,
+            },
         ]
     }
 
     #[test]
-fn test_improved_grouping_reduces_duplicates() {
-    let tiles =   vec![
-        // 2 детали 150x100 - должны быть в 1 группе
-        TileDimensions { id: 1, width: 15000, height: 10000, orientation: Orientation::Default, is_rotated: false },
-        TileDimensions { id: 1, width: 15000, height: 10000, orientation: Orientation::Default, is_rotated: false },
-        // 3 детали 80x60 - может быть в 1-2 группах
-        TileDimensions { id: 2, width: 8000, height: 6000, orientation: Orientation::Default, is_rotated: false },
-        TileDimensions { id: 2, width: 8000, height: 6000, orientation: Orientation::Default, is_rotated: false },
-        TileDimensions { id: 2, width: 8000, height: 6000, orientation: Orientation::Default, is_rotated: false },
-    ];
-
-    let sheet_tiles = vec![
-        TileDimensions { 
-            id: 100, 
-            width: 40000, 
-            height: 30000, 
-            orientation: Orientation::Default, 
-            is_rotated: false 
-        }
-    ];
-    
-    let task = Task {
-        id: "test".to_string(),
-        calculation_request: CalculationRequest {
-            configuration: Configuration {
-                cut_thickness: 0.0,
-                min_trim_dimension: 0.0,
-                consider_orientation: false,
-                optimization_factor: 1,
-                optimization_priority: vec![],
-                use_single_stock_unit: false,
-                performance_thresholds: PerformanceThresholds {
-                    max_simultaneous_tasks: 1,
-                    max_simultaneous_threads: 1,
-                    thread_check_interval: 1000,
-                },
-                cut_orientation_preference: CutOrientationPreference::default(),
+    fn test_improved_grouping_reduces_duplicates() {
+        let tiles = vec![
+            // 2 детали 150x100 - должны быть в 1 группе
+            TileDimensions {
+                id: 1,
+                width: 15000,
+                height: 10000,
+                orientation: Orientation::Default,
+                is_rotated: false,
             },
-            panels: vec![],
-            stock_panels: vec![],
-        },
-        factor: 1,
-        status: Status::Idle,
-        percentage_done: 0,
-        start_time: None,
-        solutions: vec![],
-        best_solution: None,
-        error_message: None,
-        iterations_completed: 0,
-    };
+            TileDimensions {
+                id: 1,
+                width: 15000,
+                height: 10000,
+                orientation: Orientation::Default,
+                is_rotated: false,
+            },
+            // 3 детали 80x60 - может быть в 1-2 группах
+            TileDimensions {
+                id: 2,
+                width: 8000,
+                height: 6000,
+                orientation: Orientation::Default,
+                is_rotated: false,
+            },
+            TileDimensions {
+                id: 2,
+                width: 8000,
+                height: 6000,
+                orientation: Orientation::Default,
+                is_rotated: false,
+            },
+            TileDimensions {
+                id: 2,
+                width: 8000,
+                height: 6000,
+                orientation: Orientation::Default,
+                is_rotated: false,
+            },
+        ];
 
-    // Тестируем улучшенную группировку
-    let groups = generate_groups_improved(&tiles, &sheet_tiles, &task);
-    
-    // Подсчитываем количество групп для каждого типа деталей
-    let mut group_counts_150x100 = HashSet::new();
-    let mut group_counts_80x60 = HashSet::new();
-    
-    for group in &groups {
-        if group.tile_dimensions.width == 15000 && group.tile_dimensions.height == 10000 {
-            group_counts_150x100.insert(group.group);
+        let sheet_tiles = vec![TileDimensions {
+            id: 100,
+            width: 40000,
+            height: 30000,
+            orientation: Orientation::Default,
+            is_rotated: false,
+        }];
+
+        let task = Task {
+            id: "test".to_string(),
+            calculation_request: CalculationRequest {
+                configuration: Configuration {
+                    cut_thickness: 0.0,
+                    min_trim_dimension: 0.0,
+                    consider_orientation: false,
+                    optimization_factor: 1,
+                    optimization_priority: vec![],
+                    use_single_stock_unit: false,
+                    performance_thresholds: PerformanceThresholds {
+                        max_simultaneous_tasks: 1,
+                        max_simultaneous_threads: 1,
+                        thread_check_interval: 1000,
+                    },
+                    cut_orientation_preference: CutOrientationPreference::default(),
+                },
+                panels: vec![],
+                stock_panels: vec![],
+            },
+            factor: 1,
+            status: Status::Idle,
+            percentage_done: 0,
+            start_time: None,
+            solutions: vec![],
+            best_solution: None,
+            error_message: None,
+            iterations_completed: 0,
+        };
+
+        // Тестируем улучшенную группировку
+        let groups = generate_groups_improved(&tiles, &sheet_tiles, &task);
+
+        // Подсчитываем количество групп для каждого типа деталей
+        let mut group_counts_150x100 = HashSet::new();
+        let mut group_counts_80x60 = HashSet::new();
+
+        for group in &groups {
+            if group.tile_dimensions.width == 15000 && group.tile_dimensions.height == 10000 {
+                group_counts_150x100.insert(group.group);
+            }
+            if group.tile_dimensions.width == 8000 && group.tile_dimensions.height == 6000 {
+                group_counts_80x60.insert(group.group);
+            }
         }
-        if group.tile_dimensions.width == 8000 && group.tile_dimensions.height == 6000 {
-            group_counts_80x60.insert(group.group);
-        }
+
+        println!("Groups for 150x100: {:?}", group_counts_150x100);
+        println!("Groups for 80x60: {:?}", group_counts_80x60);
+
+        // Проверяем основные требования к группировке
+
+        // Для 150x100 (2 детали): должна быть 1 группа (детали одинаковые и мало)
+        assert_eq!(
+            group_counts_150x100.len(),
+            1,
+            "Expected exactly 1 group for 150x100 tiles, got {}",
+            group_counts_150x100.len()
+        );
+
+        // Для 80x60 (3 детали): должно быть максимум 2 группы
+        assert!(
+            group_counts_80x60.len() <= 2,
+            "Too many groups for 80x60 tiles: expected <= 2, got {}",
+            group_counts_80x60.len()
+        );
+
+        // Дополнительная проверка: общее количество групп должно быть разумным
+        let total_unique_groups: HashSet<i32> = groups.iter().map(|g| g.group).collect();
+
+        // У нас 5 деталей всего, максимум 5 групп (по одной на деталь)
+        assert!(
+            total_unique_groups.len() <= tiles.len(),
+            "Too many total groups: expected <= {}, got {}",
+            tiles.len(),
+            total_unique_groups.len()
+        );
+
+        println!("Total unique groups: {}", total_unique_groups.len());
+        println!("Total tiles: {}", tiles.len());
+
+        // Проверим различие между обычной и улучшенной группировкой
+        let regular_groups = generate_groups(&tiles, &sheet_tiles, &task);
+        let regular_unique_groups: HashSet<i32> = regular_groups.iter().map(|g| g.group).collect();
+
+        println!("Regular grouping groups: {}", regular_unique_groups.len());
+        println!("Improved grouping groups: {}", total_unique_groups.len());
+
+        // Обе группировки должны быть разумными
+        assert!(
+            regular_unique_groups.len() <= tiles.len(),
+            "Regular grouping created too many groups: {} > {}",
+            regular_unique_groups.len(),
+            tiles.len()
+        );
+
+        assert!(
+            total_unique_groups.len() <= tiles.len(),
+            "Improved grouping created too many groups: {} > {}",
+            total_unique_groups.len(),
+            tiles.len()
+        );
+
+        // Проверим, что обе группировки логичны для нашего теста
+        // У нас есть 2 типа деталей: 150x100 (2 шт) и 80x60 (3 шт)
+        // Ожидаем от 2 до 5 групп в зависимости от алгоритма
+        assert!(
+            total_unique_groups.len() >= 2 && total_unique_groups.len() <= 5,
+            "Improved grouping should create 2-5 groups for our test data, got {}",
+            total_unique_groups.len()
+        );
+
+        println!("✓ Both grouping algorithms produced reasonable results");
     }
-    
-    println!("Groups for 150x100: {:?}", group_counts_150x100);
-    println!("Groups for 80x60: {:?}", group_counts_80x60);
-    
-    // Проверяем основные требования к группировке
-    
-    // Для 150x100 (2 детали): должна быть 1 группа (детали одинаковые и мало)
-    assert_eq!(
-        group_counts_150x100.len(), 1, 
-        "Expected exactly 1 group for 150x100 tiles, got {}", 
-        group_counts_150x100.len()
-    );
-    
-    // Для 80x60 (3 детали): должно быть максимум 2 группы
-    assert!(
-        group_counts_80x60.len() <= 2, 
-        "Too many groups for 80x60 tiles: expected <= 2, got {}", 
-        group_counts_80x60.len()
-    );
-    
-    // Дополнительная проверка: общее количество групп должно быть разумным
-    let total_unique_groups: HashSet<i32> = groups.iter().map(|g| g.group).collect();
-    
-    // У нас 5 деталей всего, максимум 5 групп (по одной на деталь)
-    assert!(
-        total_unique_groups.len() <= tiles.len(),
-        "Too many total groups: expected <= {}, got {}",
-        tiles.len(),
-        total_unique_groups.len()
-    );
-    
-    println!("Total unique groups: {}", total_unique_groups.len());
-    println!("Total tiles: {}", tiles.len());
-    
-    // Проверим различие между обычной и улучшенной группировкой
-    let regular_groups = generate_groups(&tiles, &sheet_tiles, &task);
-    let regular_unique_groups: HashSet<i32> = regular_groups.iter().map(|g| g.group).collect();
-    
-    println!("Regular grouping groups: {}", regular_unique_groups.len());
-    println!("Improved grouping groups: {}", total_unique_groups.len());
-    
-    // Обе группировки должны быть разумными
-    assert!(
-        regular_unique_groups.len() <= tiles.len(),
-        "Regular grouping created too many groups: {} > {}",
-        regular_unique_groups.len(),
-        tiles.len()
-    );
-    
-    assert!(
-        total_unique_groups.len() <= tiles.len(),
-        "Improved grouping created too many groups: {} > {}",
-        total_unique_groups.len(),
-        tiles.len()
-    );
-    
-    // Проверим, что обе группировки логичны для нашего теста
-    // У нас есть 2 типа деталей: 150x100 (2 шт) и 80x60 (3 шт)
-    // Ожидаем от 2 до 5 групп в зависимости от алгоритма
-    assert!(
-        total_unique_groups.len() >= 2 && total_unique_groups.len() <= 5,
-        "Improved grouping should create 2-5 groups for our test data, got {}",
-        total_unique_groups.len()
-    );
-    
-    println!("✓ Both grouping algorithms produced reasonable results");
-}
 
-  #[test]
+    #[test]
     fn test_java_compatible_grouping() {
         init_test_logging();
 
@@ -948,25 +1017,36 @@ fn test_improved_grouping_reduces_duplicates() {
             create_test_tile(8, 13000, 3575),
         ];
 
-        let sheet_tiles = vec![
-            create_test_tile(100, 40000, 30000)
-        ];
+        let sheet_tiles = vec![create_test_tile(100, 40000, 30000)];
 
         let task = create_test_task();
 
         let groups = generate_groups_java_compatible(&tiles, &sheet_tiles, &task);
-        
-        println!("Generated {} groups from {} tiles", groups.len(), tiles.len());
-        
+
+        println!(
+            "Generated {} groups from {} tiles",
+            groups.len(),
+            tiles.len()
+        );
+
         // Подсчитываем группы по типам
-        let mut group_counts_by_type: HashMap<String, std::collections::HashSet<i32>> = HashMap::new();
+        let mut group_counts_by_type: HashMap<String, std::collections::HashSet<i32>> =
+            HashMap::new();
         for group in &groups {
             let tile_type = group.tile_dimensions.to_string();
-            group_counts_by_type.entry(tile_type).or_default().insert(group.group);
+            group_counts_by_type
+                .entry(tile_type)
+                .or_default()
+                .insert(group.group);
         }
-        
+
         for (tile_type, group_set) in &group_counts_by_type {
-            println!("Tile type {} has {} groups: {:?}", tile_type, group_set.len(), group_set);
+            println!(
+                "Tile type {} has {} groups: {:?}",
+                tile_type,
+                group_set.len(),
+                group_set
+            );
         }
 
         // Проверяем результат
@@ -974,14 +1054,10 @@ fn test_improved_grouping_reduces_duplicates() {
     }
 
     fn create_test_task() -> Task {
+        use crate::enums::{cut_orientation_preference::CutOrientationPreference, status::Status};
         use crate::models::{
-            calculation_request::structs::CalculationRequest,
-            configuration::Configuration,
+            calculation_request::structs::CalculationRequest, configuration::Configuration,
             performance_thresholds::structs::PerformanceThresholds,
-        };
-        use crate::enums::{
-            cut_orientation_preference::CutOrientationPreference,
-            status::Status,
         };
 
         Task {

@@ -1,6 +1,6 @@
 use crate::{
     enums::orientation::Orientation,
-    models::{ configuration::Configuration, task::structs::Task, tile_dimensions::TileDimensions},
+    models::{configuration::Configuration, task::Task, tile_dimensions::TileDimensions},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -51,9 +51,9 @@ impl GroupedTileDimensions {
 
     /// Calculate the area of the tile
     pub fn get_area(&self) -> u64 {
-        (self.tile_dimensions.width ) * (self.tile_dimensions.height)
+        (self.tile_dimensions.width) * (self.tile_dimensions.height)
     }
-        /// Calculate dimensions-based hash code (аналог Java dimensionsBasedHashCode)
+    /// Calculate dimensions-based hash code (аналог Java dimensionsBasedHashCode)
     pub fn dimensions_based_hash_code(&self) -> i32 {
         self.tile_dimensions.dimensions_based_hash_code()
     }
@@ -73,38 +73,36 @@ impl std::fmt::Display for GroupedTileDimensions {
 }
 
 pub fn get_distinct_grouped_tile_dimensions<T>(
-    list: &[T], 
-    _configuration: &Configuration
-) -> HashMap<T, i32> 
-where 
+    list: &[T],
+    _configuration: &Configuration,
+) -> HashMap<T, i32>
+where
     T: Clone + Eq + std::hash::Hash,
 {
     let mut map = HashMap::new();
-    
+
     for item in list {
         let count = map.entry(item.clone()).or_insert(0);
         *count += 1;
     }
-    
+
     map
 }
 
-
 /// Специализированная версия для GroupedTileDimensions
 pub fn get_distinct_grouped_tile_dimensions_for_tiles(
-    list: &[GroupedTileDimensions], 
-    _configuration: &Configuration
+    list: &[GroupedTileDimensions],
+    _configuration: &Configuration,
 ) -> HashMap<GroupedTileDimensions, i32> {
     get_distinct_grouped_tile_dimensions(list, _configuration)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::tile_dimensions::TileDimensions;
     use crate::enums::orientation::Orientation;
-    
+    use crate::models::tile_dimensions::TileDimensions;
+
     #[test]
     fn test_get_distinct_grouped_tile_dimensions() {
         let tile1 = TileDimensions {
@@ -114,7 +112,7 @@ mod tests {
             orientation: Orientation::Default,
             is_rotated: false,
         };
-        
+
         let tile2 = TileDimensions {
             id: 1,
             width: 100,
@@ -122,15 +120,15 @@ mod tests {
             orientation: Orientation::Default,
             is_rotated: false,
         };
-        
+
         let grouped_tiles = vec![
             GroupedTileDimensions::new(tile1, 0),
             GroupedTileDimensions::new(tile2, 0),
         ];
-        
+
         let config = Configuration::default();
         let result = get_distinct_grouped_tile_dimensions_for_tiles(&grouped_tiles, &config);
-        
+
         // Если tile1 и tile2 одинаковые и в одной группе, должно быть 1 уникальный элемент с count = 2
         assert_eq!(result.len(), 1);
         assert_eq!(*result.values().next().unwrap(), 2);
@@ -145,7 +143,7 @@ mod tests {
             orientation: Orientation::Default,
             is_rotated: false,
         };
-        
+
         let tile2 = TileDimensions {
             id: 1,
             width: 100,
@@ -153,10 +151,10 @@ mod tests {
             orientation: Orientation::Default,
             is_rotated: false,
         };
-        
+
         let grouped1 = GroupedTileDimensions::new(tile1, 0);
         let grouped2 = GroupedTileDimensions::new(tile2, 0);
-        
+
         // Проверяем, что одинаковые элементы равны
         assert_eq!(grouped1, grouped2);
     }
@@ -170,10 +168,10 @@ mod tests {
             orientation: Orientation::Default,
             is_rotated: false,
         };
-        
+
         let grouped1 = GroupedTileDimensions::new(tile.clone(), 0);
         let grouped2 = GroupedTileDimensions::new(tile, 1);
-        
+
         // Проверяем, что элементы с разными группами не равны
         assert_ne!(grouped1, grouped2);
     }
