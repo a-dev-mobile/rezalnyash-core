@@ -3,10 +3,7 @@ use rezalnyas_core::{
     enums::{
         cut_orientation_preference::CutOrientationPreference,
         optimization_priority::OptimizationPriority, status::Status,
-    },
-    log_debug, log_error, log_info, log_warn,
-    logging::{init_logging, LogConfig, LogLevel},
-    models::{
+    }, log_debug, log_error, log_info, log_warn, logging::{init_logging, LogConfig, LogLevel}, models::{
         calculation_request::CalculationRequest,
         configuration::Configuration,
         grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions},
@@ -14,9 +11,7 @@ use rezalnyas_core::{
         performance_thresholds::PerformanceThresholds,
         task::structs::Task,
         tile_dimensions::{generate_groups, TileDimensions},
-    },
-    scaled_math::{PrecisionAnalyzer, ScaledConverter, ScaledNumber},
-    CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy,
+    }, scaled_math::{PrecisionAnalyzer, ScaledConverter, ScaledNumber}, services::arrangement::generate_permutations, CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy
 };
 const MAX_ALLOWED_DIGITS: u8 = 6;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -202,7 +197,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Генерация групп
     let list_generate_groups = generate_groups(&tiles, &stock_tiles, &task);
-
+//получаем уникальные группы
     let distinct_grouped_tile_dimensions =
         get_distinct_grouped_tile_dimensions(&list_generate_groups, &configuration);
     log_debug!("Task[{}] Calculating permutations...", task.id);
@@ -213,12 +208,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     log_debug!("Task[{}] Groups: {}", task.id, group_info);
-    log_debug!("Generated {} groups", list_generate_groups.len());
-    log_debug!(
+    log_info!("Generated {} groups", list_generate_groups.len());
+    log_info!(
         "Distinct groups: {}",
         distinct_grouped_tile_dimensions.len()
     );
-
+ //  Создание отсортированного списка ключей
     let mut sorted_grouped_tiles: Vec<GroupedTileDimensions> =
         distinct_grouped_tile_dimensions.keys().cloned().collect();
 
@@ -290,6 +285,60 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Логирование оставшихся групп
     for (i, tile) in remaining_tiles.iter().enumerate() {
         log_debug!("Remaining[{}]: {} area={}", i, tile, tile.get_area());
+    }
+
+
+
+     /*
+     * Генерация перестановок
+     * 
+     * Генерируем все возможные перестановки первых 7 групп
+     * К каждой перестановке добавляем оставшиеся группы в исходном порядке
+     */
+    
+    
+    // Генерируем все перестановки для групп permutation_tiles
+    let mut list_generate_permutations = generate_permutations(permutation_tiles);
+    
+    log_debug!(
+        "Task[{}] Generated {} permutations from {} groups",
+        task.id,
+        list_generate_permutations.len(),
+        list_generate_permutations.first().map_or(0, |p| p.len())
+    );
+    
+    // К каждой перестановке добавляем оставшиеся группы в исходном порядке
+    for permutation in &mut list_generate_permutations {
+        permutation.extend_from_slice(&remaining_tiles);
+    }
+    
+    log_debug!(
+        "Task[{}] Final permutations: {} permutations with {} total groups each",
+        task.id,
+        list_generate_permutations.len(),
+        list_generate_permutations.first().map_or(0, |p| p.len())
+    );
+    
+    log_info!(
+        "Generated {} total permutations with {} groups each",
+        list_generate_permutations.len(),
+        list_generate_permutations.first().map_or(0, |p| p.len())
+    );
+    
+    // Логирование первых нескольких перестановок для отладки
+    for (i, permutation) in list_generate_permutations.iter().take(3).enumerate() {
+        let perm_info: String = permutation
+            .iter()
+            .enumerate()
+            .map(|(j, group)| format!("{}[area={}]", j, group.get_area()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        
+        log_debug!("Permutation[{}]: {}", i, perm_info);
+    }
+    
+    if list_generate_permutations.len() > 3 {
+        log_debug!("... and {} more permutations", list_generate_permutations.len() - 3);
     }
     Ok(())
 }
