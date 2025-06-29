@@ -20,7 +20,7 @@ pub struct Configuration {
     pub consider_orientation: bool,
 
     /// Optimization accuracy factor (1-10, higher = more accurate but slower)
-    pub optimization_factor: u8,
+    pub optimization_factor: f64,
 
     /// Primary optimization goal
     pub optimization_priority: Vec<OptimizationPriority>,
@@ -40,7 +40,7 @@ impl Default for Configuration {
             cut_thickness: 3.0,
             min_trim_dimension: 10.0,
             consider_orientation: false,
-            optimization_factor: 5,
+            optimization_factor: 5.0,
             optimization_priority: vec![OptimizationPriority::default()],
             use_single_stock_unit: false,
             performance_thresholds: PerformanceThresholds::default(),

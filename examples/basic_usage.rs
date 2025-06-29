@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Configuration {
         cut_thickness: 0.0,
         use_single_stock_unit: false,
-        optimization_factor: 2,
+        optimization_factor: 2.0,
         optimization_priority: vec![
             OptimizationPriority::MostTiles,
             OptimizationPriority::LeastWastedArea,
@@ -523,156 +523,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
          * Если панелей много (>100), уменьшаем размер пула для экономии памяти
          */
 
-        let mut optimization_factor = if configuration.optimization_factor > 0 {
-            (100 * configuration.optimization_factor) as i32
-        } else {
-            100
-        };
-        
-        if tiles.len() > 100 {
-            optimization_factor = (optimization_factor as f64 * (0.5 / (tiles.len() as f64 / 100.0))) as i32;
-            log_info!(
-                "Limiting solution pool elements to [{}]", 
-                optimization_factor
-            );
-        }
+    let mut optimization_factor = if configuration.optimization_factor > 0.0 {
+        100.0 * configuration.optimization_factor // В Java это ДВОЙКА * 100 = 200!
+    } else {
+        100.0
+    };
 
         log_info!(
-            "Using optimization factor: {}, solution pool size: {}",
-            configuration.optimization_factor,
+        "Initial optimization factor calculation: config.optimization_factor={}, 100 * {} = {}",
+        configuration.optimization_factor,
+        configuration.optimization_factor,
+        optimization_factor
+    );
+    if tiles.len() > 100 {
+        let reduction_factor = 0.5 / (tiles.len() as f64 / 100.0);
+        optimization_factor = (optimization_factor * reduction_factor);
+
+        log_info!(
+            "Tiles count {} > 100, applying reduction: {} * {:.4} = {}",
+            tiles.len(),
+            100.0 * configuration.optimization_factor,
+            reduction_factor,
             optimization_factor
         );
-
-        // /*
-        //  * Основной цикл обработки перестановок
-        //  * 
-        //  * Цикл по каждой перестановке панелей
-        //  * Для каждой перестановки пробуем разные комбинации листов
-        //  */
-
-        // let max_permutations_with_solution = 150;
-        // let mut permutation_count = 0;
-
-        // for (permutation_idx, tile_arrangement) in sorted_tile_lists.iter().enumerate() {
-        //     // Проверяем, не остановлена ли задача
-        //     if task.status != Status::Running {
-        //         log_debug!(
-        //             "Task no longer has running status. Stopping at permutation[{}]",
-        //             permutation_idx
-        //         );
-        //         break;
-        //     }
-
-        //     // Если уже найдено решение "все панели помещаются" и обработано достаточно перестановок
-        //     if task.has_solution_all_fit() && permutation_count > max_permutations_with_solution {
-        //         log_debug!(
-        //             "Task has solution and processed max permutations. Stopping at permutation[{}]",
-        //             permutation_idx
-        //         );
-        //         break;
-        //     }
-
-        //     log_debug!(
-        //         "Processing permutation[{}/{}]",
-        //         permutation_idx + 1,
-        //         sorted_tile_lists.len()
-        //     );
-
-        //     /*
-        //      * Внутренний цикл по комбинациям листов
-        //      * 
-        //      * Для каждой перестановки панелей пробуем разные комбинации исходных листов
-        //      * Ограничиваем количество вариантов для разумного времени выполнения
-        //      */
-
-        //     let max_stock_iterations = 1000;
-        //     let mut stock_iteration = 0;
-
-        //     while stock_iteration < max_stock_iterations {
-        //         // Получаем следующую комбинацию листов
-        //         let stock_solution = match stock_panel_picker.get_stock_solution(stock_iteration) {
-        //             Some(solution) => solution,
-        //             None => {
-        //                 log_debug!(
-        //                     "No more possible stock solutions: stockSolution[{}] permutation[{}]",
-        //                     stock_iteration,
-        //                     permutation_idx
-        //                 );
-        //                 break;
-        //             }
-        //         };
-
-        //         // Проверяем, не остановлена ли задача
-        //         if task.status != Status::Running {
-        //             log_debug!(
-        //                 "Task no longer has running status. Stopping stock loop for permutation[{}]",
-        //                 permutation_idx
-        //             );
-        //             break;
-        //         }
-
-        //         log_debug!(
-        //             "Starting permutation[{}/{}] with stock solution [{}] {{nbrPanels[{}] area[{}] {}}}",
-        //             permutation_idx + 1,
-        //             sorted_tile_lists.len(),
-        //             stock_iteration,
-        //             stock_solution.get_stock_tile_dimensions().len(),
-        //             stock_solution.get_total_area(),
-        //             stock_solution
-        //         );
-
-        //         /*
-        //          * Здесь будет вызов реального алгоритма размещения панелей на листах
-        //          * 
-        //          * TODO: Реализовать алгоритм раскроя:
-        //          * 1. Создать CutListThread для данной комбинации перестановки и листов
-        //          * 2. Запустить алгоритм размещения
-        //          * 3. Сохранить результат в список решений
-        //          * 4. Обновить лучшее решение если найдено лучше
-        //          */
-
-        //         // Пока что просто логируем, что мы обработали эту комбинацию
-        //         log_debug!(
-        //             "TODO: Process tile arrangement with stock solution - permutation[{}] stock[{}]",
-        //             permutation_idx,
-        //             stock_iteration
-        //         );
-
-        //         stock_iteration += 1;
-        //     }
-
-        //     permutation_count += 1;
-        // }
-
-        // /*
-        //  * Финализация
-        //  * 
-        //  * Устанавливаем статус задачи как завершенная
-        //  * Логируем итоговую статистику
-        //  */
-
-        // if task.status == Status::Running {
-        //     task.status = Status::Finished;
-        // }
-
-        // log_info!(
-        //     "Task[{}] Processing completed. Status: {:?}",
-        //     task.id,
-        //     task.status
-        // );
-
-        // log_info!("\n=== Подготовка к раскрою завершена ===");
-        // log_info!("Обработано {} перестановок панелей", permutation_count);
-        // log_info!("Сгенерированы варианты комбинаций листов");
-        // log_info!("Готово к реализации алгоритма размещения панелей");
+        log_info!(
+            "Limiting solution pool elements to [{}]", 
+            optimization_factor
+        );
+    }
 
 
 
 
 
+    log_info!(
+        "Final optimization factor: {}, solution pool size: {}",
+        optimization_factor,
+        optimization_factor
+    );
 
 
-
+    log_info!("\n=== Алгоритм выполнен успешно ===");
+    log_info!("Обработано {} деталей", tiles.len());
+    log_info!("Создано {} вариантов размещения", sorted_tile_lists.len());
+    log_info!("Оптимизационный фактор: {}", optimization_factor);
 
 
 
