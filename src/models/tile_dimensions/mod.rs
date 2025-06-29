@@ -609,7 +609,7 @@ mod tests {
                     cut_thickness: 0.0,
                     min_trim_dimension: 0.0,
                     consider_orientation: false,
-                    optimization_factor: 1,
+                    optimization_factor: 1.0,
                     optimization_priority: vec![],
                     use_single_stock_unit: false,
                     performance_thresholds: PerformanceThresholds {
@@ -879,7 +879,7 @@ mod tests {
                     cut_thickness: 0.0,
                     min_trim_dimension: 0.0,
                     consider_orientation: false,
-                    optimization_factor: 1,
+                    optimization_factor: 1.0,
                     optimization_priority: vec![],
                     use_single_stock_unit: false,
                     performance_thresholds: PerformanceThresholds {
@@ -1067,7 +1067,7 @@ mod tests {
                     cut_thickness: 0.0,
                     min_trim_dimension: 0.0,
                     consider_orientation: false,
-                    optimization_factor: 1,
+                    optimization_factor: 1.0,
                     optimization_priority: vec![],
                     use_single_stock_unit: false,
                     performance_thresholds: PerformanceThresholds {
