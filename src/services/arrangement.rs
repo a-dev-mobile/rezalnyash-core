@@ -1,6 +1,14 @@
 //! Arrangement utilities for generating permutations
 
-
+/// Generate all permutations of the given list
+/// 
+/// This is a direct port of the Java Arrangement.generatePermutations method
+/// 
+/// # Arguments
+/// * `list` - A vector of elements to permute
+/// 
+/// # Returns
+/// A vector containing all permutations
 pub fn generate_permutations<T: Clone>(mut list: Vec<T>) -> Vec<Vec<T>> {
     // Base case: empty list has one permutation (empty permutation)
     if list.is_empty() {
@@ -128,4 +136,84 @@ pub fn factorial(n: usize) -> Option<usize> {
 /// which represents the total number of permutations possible.
 pub fn expected_permutation_count(input_size: usize) -> Option<usize> {
     factorial(input_size)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_permutations_empty() {
+        let empty_vec: Vec<i32> = vec![];
+        let result: Vec<Vec<i32>> = generate_permutations(empty_vec);
+        let expected: Vec<Vec<i32>> = vec![vec![]];
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_generate_permutations_single() {
+        let single_vec: Vec<i32> = vec![1];
+        let result: Vec<Vec<i32>> = generate_permutations(single_vec);
+        let expected: Vec<Vec<i32>> = vec![vec![1]];
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_generate_permutations_two() {
+        let two_vec: Vec<i32> = vec![1, 2];
+        let result: Vec<Vec<i32>> = generate_permutations(two_vec);
+        assert_eq!(result.len(), 2);
+        assert!(result.contains(&vec![1, 2]));
+        assert!(result.contains(&vec![2, 1]));
+    }
+
+    #[test]
+    fn test_generate_permutations_three() {
+        let three_vec: Vec<i32> = vec![1, 2, 3];
+        let result: Vec<Vec<i32>> = generate_permutations(three_vec);
+        assert_eq!(result.len(), 6); // 3! = 6
+        
+        // Check that all expected permutations are present
+        let expected: Vec<Vec<i32>> = vec![
+            vec![1, 2, 3], vec![2, 1, 3], vec![2, 3, 1],
+            vec![1, 3, 2], vec![3, 1, 2], vec![3, 2, 1]
+        ];
+        
+        for perm in expected {
+            assert!(result.contains(&perm));
+        }
+    }
+
+    #[test]
+    fn test_factorial() {
+        assert_eq!(factorial(0), Some(1));
+        assert_eq!(factorial(1), Some(1));
+        assert_eq!(factorial(2), Some(2));
+        assert_eq!(factorial(3), Some(6));
+        assert_eq!(factorial(4), Some(24));
+        assert_eq!(factorial(5), Some(120));
+    }
+
+    #[test]
+    fn test_generate_permutations_limited() {
+        let vec: Vec<i32> = vec![1, 2, 3, 4];
+        let result: Vec<Vec<i32>> = generate_permutations_limited(vec, 10);
+        assert!(result.len() <= 10);
+        
+        // All results should be valid permutations
+        for perm in &result {
+            assert_eq!(perm.len(), 4);
+        }
+    }
+
+    #[test]
+    fn test_generate_permutations_borrowed() {
+        let vec: Vec<i32> = vec![1, 2];
+        let result: Vec<Vec<i32>> = generate_permutations_borrowed(&vec);
+        assert_eq!(result.len(), 2);
+        assert!(result.contains(&vec![1, 2]));
+        assert!(result.contains(&vec![2, 1]));
+        // Убеждаемся, что исходный вектор не изменился
+        assert_eq!(vec, vec![1, 2]);
+    }
 }
