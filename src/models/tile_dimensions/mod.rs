@@ -11,14 +11,14 @@ use crate::{
     models::{
         calculation_request::structs::CalculationRequest, configuration::Configuration,
         grouped_tile_dimensions::GroupedTileDimensions,
-        performance_thresholds::structs::PerformanceThresholds, task::Task,
+        performance_thresholds::PerformanceThresholds, task::Task,
     },
 };
 
 /// Represents the dimensions and properties of a tile/panel to be cut
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct TileDimensions {
-    pub id: u8,
+    pub id: i32,
     pub width: u64,
     pub height: u64,
     pub orientation: Orientation,
@@ -667,7 +667,7 @@ mod tests {
         assert!(is_one_dimensional_optimization(&tiles, &sheet_tiles));
     }
 
-    fn create_test_tile(id: u8, width: u64, height: u64) -> TileDimensions {
+    fn create_test_tile(id: i32, width: u64, height: u64) -> TileDimensions {
         TileDimensions {
             id,
             width,
@@ -1057,7 +1057,7 @@ mod tests {
         use crate::enums::{cut_orientation_preference::CutOrientationPreference, status::Status};
         use crate::models::{
             calculation_request::structs::CalculationRequest, configuration::Configuration,
-            performance_thresholds::structs::PerformanceThresholds,
+            performance_thresholds::PerformanceThresholds,
         };
 
         Task {

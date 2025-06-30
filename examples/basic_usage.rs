@@ -1,26 +1,37 @@
 use rayon::vec;
+
 use rezalnyas_core::{
-    enums::{
-        cut_orientation_preference::CutOrientationPreference,
-       status::Status,
-    },
+    enums::{cut_orientation_preference::CutOrientationPreference, status::Status},
     log_debug, log_error, log_info, log_warn,
     logging::{init_logging, LogConfig, LogLevel},
     models::{
-        calculation_request::CalculationRequest, configuration::Configuration, grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions}, panel::structs::Panel, performance_thresholds::PerformanceThresholds, permutation_thread_spawner::{PermutationThreadSpawner, ProgressTracker}, solution::Solution, stock_solution::StockPanelPicker, task::Task, tile::tile_conversion::grouped_tile_dimensions_list_to_tile_dimensions_list, tile_dimensions::{
+        calculation_request::CalculationRequest,
+        configuration::Configuration,
+        grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions},
+        panel::structs::Panel,
+        performance_thresholds::PerformanceThresholds,
+        permutation_thread_spawner::{PermutationThreadSpawner, ProgressTracker},
+        solution::Solution,
+        stock_solution::StockPanelPicker,
+        task::Task,
+        tile::grouped_tile_dimensions_list_to_tile_dimensions_list,
+        tile_dimensions::{
             count_duplicate_permutations, generate_groups, generate_groups_improved,
             generate_groups_java_compatible, remove_duplicated_permutations,
             remove_duplicated_permutations_java_compatible, TileDimensions,
-        }
+        },
     },
     scaled_math::{PrecisionAnalyzer, ScaledConverter, ScaledNumber},
-    services::{arrangement::generate_permutations, computation::{process_permutation_with_all_stock_solutions, OptimizationPriority}},
+    services::{
+        arrangement::generate_permutations,
+        computation::{process_permutation_with_all_stock_solutions, OptimizationPriority},
+    },
     CutListOptimizerService, CuttingRequest, Material, OptimizationConfig, OptimizationStrategy,
 };
 
 const MAX_ALLOWED_DIGITS: u8 = 6;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut unique_tile_id = 1u8;
+    let mut unique_tile_id = 1i32;
     println!("🐛 DEBUG MODE: Single-threaded optimization");
     println!(
         "💻 Available cores: {}",
@@ -468,52 +479,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    /*
+     * Установка статуса и инициализация генератора листов
+     *
+     * Помечаем задачу как выполняющуюся
+     * Создаем генератор комбинаций исходных листов
+     * Инициализируем его (запускается отдельный поток для генерации вариантов листов)
+     */
 
+    // Устанавливаем статус задачи как "выполняющаяся"
+    task.status = Status::Running;
 
+    // Определяем максимальное количество листов (если включен режим одного листа)
+    let max_stock_units = if configuration.use_single_stock_unit {
+        Some(1)
+    } else {
+        None
+    };
 
+    // Создаем генератор комбинаций листов
+    let mut stock_panel_picker = StockPanelPicker::new(
+        tiles.clone(),
+        stock_tiles.clone(),
+        task.clone(),
+        max_stock_units,
+    );
 
-        /*
-         * Установка статуса и инициализация генератора листов
-         * 
-         * Помечаем задачу как выполняющуюся
-         * Создаем генератор комбинаций исходных листов
-         * Инициализируем его (запускается отдельный поток для генерации вариантов листов)
-         */
-        
-        // Устанавливаем статус задачи как "выполняющаяся"
-        task.status = Status::Running;
-        
-        // Определяем максимальное количество листов (если включен режим одного листа)
-        let max_stock_units = if configuration.use_single_stock_unit {
-            Some(1)
-        } else {
-            None
-        };
-        
-        // Создаем генератор комбинаций листов
-        let mut stock_panel_picker = StockPanelPicker::new(
-            tiles.clone(),
-            stock_tiles.clone(), 
-            task.clone(),
-            max_stock_units
-        );
-        
-        // Инициализируем генератор (запускает отдельный поток)
-        stock_panel_picker.init(tiles.clone(), stock_tiles.clone(), max_stock_units);
-        
-        log_debug!(
-            "Task[{}] Initialized stock panel picker with {} stock tile types",
-            task.id,
-            stock_tiles.len()
-        );
+    // Инициализируем генератор (запускает отдельный поток)
+    stock_panel_picker.init(tiles.clone(), stock_tiles.clone(), max_stock_units);
 
-        /*
-         * Расчет размера пула решений
-         * 
-         * Определяем размер пула лучших решений, которые будем хранить
-         * Базовый размер = 100 * коэффициент оптимизации из конфигурации
-         * Если панелей много (>100), уменьшаем размер пула для экономии памяти
-         */
+    log_debug!(
+        "Task[{}] Initialized stock panel picker with {} stock tile types",
+        task.id,
+        stock_tiles.len()
+    );
+
+    /*
+     * Расчет размера пула решений
+     *
+     * Определяем размер пула лучших решений, которые будем хранить
+     * Базовый размер = 100 * коэффициент оптимизации из конфигурации
+     * Если панелей много (>100), уменьшаем размер пула для экономии памяти
+     */
 
     let mut optimization_factor = if configuration.optimization_factor > 0.0 {
         100.0 * configuration.optimization_factor // В Java это ДВОЙКА * 100 = 200!
@@ -521,7 +528,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         100.0
     };
 
-        log_info!(
+    log_info!(
         "Initial optimization factor calculation: config.optimization_factor={}, 100 * {} = {}",
         configuration.optimization_factor,
         configuration.optimization_factor,
@@ -539,21 +546,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             optimization_factor
         );
         log_info!(
-            "Limiting solution pool elements to [{}]", 
+            "Limiting solution pool elements to [{}]",
             optimization_factor
         );
     }
-
-
-
-
 
     log_info!(
         "Final optimization factor: {}, solution pool size: {}",
         optimization_factor,
         optimization_factor
     );
-
 
     log_info!("\n=== Алгоритм выполнен успешно ===");
     log_info!("Обработано {} деталей", tiles.len());
@@ -562,9 +564,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     /*
      * Инициализация менеджеров потоков (однопоточная версия)
-     * 
+     *
      * Создаем менеджер для обработки перестановок
-     * Создаем трекер прогресса выполнения  
+     * Создаем трекер прогресса выполнения
      * Настраиваем ограничения (в однопоточном режиме они не критичны)
      */
 
@@ -572,27 +574,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut progress_tracker = ProgressTracker::new(
         sorted_tile_lists.len(),
         &mut task,
-        "DEFAULT_MATERIAL".to_string()
+        "DEFAULT_MATERIAL".to_string(),
     );
-    
+
     permutation_thread_spawner.set_progress_tracker(&mut progress_tracker);
-    permutation_thread_spawner.set_max_alive_spawner_threads(configuration.performance_thresholds.max_simultaneous_threads);
-    permutation_thread_spawner.set_interval_between_max_alive_check(configuration.performance_thresholds.thread_check_interval);
+    permutation_thread_spawner.set_max_alive_spawner_threads(
+        configuration
+            .performance_thresholds
+            .max_simultaneous_threads,
+    );
+    permutation_thread_spawner.set_interval_between_max_alive_check(
+        configuration.performance_thresholds.thread_check_interval,
+    );
 
     log_info!(
         "Initialized thread managers: max_threads={}, check_interval={}ms",
-        configuration.performance_thresholds.max_simultaneous_threads,
+        configuration
+            .performance_thresholds
+            .max_simultaneous_threads,
         configuration.performance_thresholds.thread_check_interval
     );
 
-
-
-
     /*
      * Основной цикл обработки перестановок - ТОЧНАЯ КОПИЯ JAVA ЛОГИКИ
-     * 
+     *
      * Java: while (true) { if (i >= arrayList4.size()) { break; } ... }
-     * 
+     *
      * Цикл по каждой перестановке панелей
      * Проверяем, не остановлена ли задача
      * Если уже найдено решение "все панели помещаются" и запущено достаточно потоков - прекращаем
@@ -625,7 +632,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Java: if (task.hasSolutionAllFit() && permutationThreadSpawner.getNbrTotalThreads() > MAX_PERMUTATIONS_WITH_SOLUTION)
-        if task.has_solution_all_fit() && permutation_thread_spawner.get_nbr_total_threads() > MAX_PERMUTATIONS_WITH_SOLUTION {
+        if task.has_solution_all_fit()
+            && permutation_thread_spawner.get_nbr_total_threads() > MAX_PERMUTATIONS_WITH_SOLUTION
+        {
             // Java: task2.setMaterialPercentageDone(str2, Integer.valueOf(i3));
             // task.set_material_percentage_done(material_str, i3); // TODO: реализовать когда будет структура
             log_debug!("Task has solution and spawned max permutations threads");
@@ -634,10 +643,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         /*
          * Запуск потока для обработки перестановки - АДАПТАЦИЯ ДЛЯ ОДНОПОТОЧНОСТИ
-         * 
+         *
          * Java создает новый поток:
          * permutationThreadSpawner2.spawn(new Thread(new Runnable() { ... }));
-         * 
+         *
          * В Rust однопоточной версии вызываем метод напрямую:
          * m301x52dbbde3(...) - это Java метод обработки одной перестановки
          */
@@ -712,7 +721,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     /*
      * Финализация
-     * 
+     *
      * Устанавливаем статус задачи как завершенная
      * Логируем итоговую статистику
      */

@@ -339,7 +339,7 @@ mod tests {
     use super::*;
     use crate::enums::orientation::Orientation;
 
-    fn create_test_tile(id: u8, width: u64, height: u64) -> TileDimensions {
+    fn create_test_tile(id: i32, width: u64, height: u64) -> TileDimensions {
         TileDimensions {
             id,
             width,
