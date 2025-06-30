@@ -8,6 +8,7 @@ use rezalnyas_core::{
         calculation_request::CalculationRequest,
         configuration::Configuration,
         grouped_tile_dimensions::{get_distinct_grouped_tile_dimensions, GroupedTileDimensions},
+        mosaic::Mosaic,
         panel::structs::Panel,
         performance_thresholds::PerformanceThresholds,
         permutation_thread_spawner::{PermutationThreadSpawner, ProgressTracker},
@@ -20,6 +21,7 @@ use rezalnyas_core::{
             generate_groups_java_compatible, remove_duplicated_permutations,
             remove_duplicated_permutations_java_compatible, TileDimensions,
         },
+        tile_node::TileNode,
     },
     scaled_math::{PrecisionAnalyzer, ScaledConverter, ScaledNumber},
     services::{
@@ -32,13 +34,6 @@ use rezalnyas_core::{
 const MAX_ALLOWED_DIGITS: u8 = 6;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut unique_tile_id = 1i32;
-    println!("🐛 DEBUG MODE: Single-threaded optimization");
-    println!(
-        "💻 Available cores: {}",
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1)
-    );
 
     // Инициализация логирования
     init_logging(LogConfig {
@@ -97,17 +92,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stock_panels,
     };
 
-    println!("Создан запрос:");
-    println!("- Деталей: {}", request.panels.len());
-    println!(
-        "- Заготовка: {}x{}",
-        request.stock_panels[0].width, request.stock_panels[0].height
+    log_debug!("RUST DEBUG: === Создание запроса ===");
+    log_debug!("JAVA аналог: CalculationRequest создан");
+    log_debug!("RUST: Создан запрос:");
+    log_debug!("RUST: - Деталей: {}", request.panels.len());
+    log_debug!(
+        "RUST: - Заготовка: {}x{}",
+        request.stock_panels[0].width,
+        request.stock_panels[0].height
     );
 
     // Вычисление точности
     let panels = &request.panels;
     let stock_panels = &request.stock_panels;
     let configuration = &request.configuration;
+
+    log_debug!("RUST DEBUG: === Вычисление точности ===");
+    log_debug!("JAVA аналог: precision calculation");
 
     // Вычисление максимального количества знаков после запятой
     let max_decimal_places_panels = Panel::get_max_decimal_places(panels);
@@ -164,13 +165,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         max_decimal_places
     };
 
+    log_debug!("RUST DEBUG: final_precision = {}", final_precision);
+
     // Создание конвертера с определенной точностью
     let converter = ScaledConverter::new(final_precision)?;
     // dPow - scale_factor
     let scale_factor = 10_i64.pow(final_precision as u32);
+
+    log_debug!("RUST DEBUG: scale_factor = {}", scale_factor);
+    log_debug!("JAVA аналог: double dPow = Math.pow(10.0d, iMax);");
+
     // Создание списков для результатов
     let mut tiles = Vec::new();
     let mut stock_tiles = Vec::new();
+
+    log_debug!("RUST DEBUG: === Создание TileDimensions ===");
+    log_debug!("JAVA аналог: ArrayList arrayList = new ArrayList();");
+
     // Обработка панелей (tiles)
     for panel in panels {
         for _ in 0..panel.count {
@@ -185,12 +196,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 is_rotated: false,
             };
 
+            log_debug!(
+                "RUST DEBUG: Создана панель ID {}: {}x{} (масштаб: {} -> {}x{})",
+                unique_tile_id,
+                panel.width,
+                panel.height,
+                scale_factor,
+                tile.width,
+                tile.height
+            );
+            log_debug!("JAVA аналог: arrayList.add(new TileDimensions(...));");
+
             tiles.push(tile);
             unique_tile_id += 1; // Увеличиваем ID для следующей детали
         }
     }
 
     // Обработка складских панелей (stock tiles)
+    log_debug!("RUST DEBUG: === Создание Stock TileDimensions ===");
+    log_debug!("JAVA аналог: ArrayList arrayList2 = new ArrayList();");
+
     for stock_panel in stock_panels {
         for _ in 0..stock_panel.count {
             let width_scaled = ScaledNumber::from_str(&stock_panel.width, final_precision)?;
@@ -205,9 +230,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 is_rotated: false,
             };
 
+            log_debug!(
+                "RUST DEBUG: Создан лист ID {}: {}x{} (масштаб: {} -> {}x{})",
+                unique_tile_id,
+                stock_panel.width,
+                stock_panel.height,
+                scale_factor,
+                stock_tile.width,
+                stock_tile.height
+            );
+            log_debug!("JAVA аналог: arrayList2.add(new TileDimensions(...));");
+
             stock_tiles.push(stock_tile);
         }
     }
+
+    log_debug!("RUST DEBUG: === Итого создано ===");
+    log_debug!("RUST: Панелей: {}", tiles.len());
+    log_debug!("RUST: Листов: {}", stock_tiles.len());
+    log_debug!(
+        "JAVA аналог: arrayList.size() = {}, arrayList2.size() = {}",
+        tiles.len(),
+        stock_tiles.len()
+    );
+
     let mut task = Task {
         id: "test_task".to_string(),
         calculation_request: request.clone(),
@@ -220,7 +266,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         best_solution: None,
         start_time: None,
     };
-
+    log_debug!("RUST DEBUG: === Task создан ===");
+    log_debug!("JAVA аналог: final Task task = new Task(...);");
     // Генерация групп
     let list_generate_groups = generate_groups_java_compatible(&tiles, &stock_tiles, &task);
     //получаем уникальные группы
@@ -742,8 +789,203 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log_info!("Сгенерированы варианты комбинаций листов");
     log_info!("Готово к реализации алгоритма размещения панелей");
 
+    log_debug!("RUST DEBUG: === НАЧИНАЕМ АЛГОРИТМ РАЗМЕЩЕНИЯ ===");
+    log_debug!("JAVA аналог: CutListThread.computeSolutions()");
+    log_debug!("RUST: Аналог Java метода computeSolutions()");
+
+    // ЭТАП 1: Создание начального решения
+    log_debug!("RUST DEBUG ЭТАП 1: === Создание начального решения ===");
+    log_debug!("JAVA аналог: List<Solution> arrayList = new ArrayList<>();");
+    log_debug!("JAVA аналог: arrayList.add(new Solution(this.stockSolution));");
+
+    log_debug!("RUST ЭТАП 1: === Создание начального решения ===");
+    log_debug!("RUST аналог Java: List<Solution> arrayList = new ArrayList<>();");
+    log_debug!("RUST аналог Java: arrayList.add(new Solution(this.stockSolution));");
+
+    let mut solution = Solution::new();
+
+    // Создаем мозаику для каждого листа
+    for (i, stock_tile) in stock_tiles.iter().enumerate() {
+        log_debug!(
+            "RUST: Создаем мозаику для листа {}: {}x{}",
+            i + 1,
+            stock_tile.width,
+            stock_tile.height
+        );
+
+        // Создаем корневой узел для листа
+        let root_node = TileNode::new(0, 0, stock_tile.width as i32, stock_tile.height as i32);
+
+        // Создаем мозаику из этого узла
+        let mosaic = Mosaic::from_tile_node(&root_node, "DEFAULT_MATERIAL".to_string());
+        solution.add_mosaic(mosaic);
+
+        log_debug!(
+            "RUST: Мозаика {} создана, размер: {}x{}",
+            i + 1,
+            stock_tile.width,
+            stock_tile.height
+        );
+    }
+let mut current_solutions = vec![solution.clone()]; // Начальное решение с одной мозаикой
+    log_debug!(
+        "RUST ЭТАП 1 ЗАВЕРШЕН: Создано решение с {} мозаиками",
+        solution.mosaics.len()
+    );
+    log_debug!("JAVA аналог: arrayList.size() = {}", solution.mosaics.len());
+
+    // Логируем информацию о stock tiles (аналог stockSolution)
+    log_debug!(
+        "RUST DEBUG: Stock tiles содержит {} листов:",
+        stock_tiles.len()
+    );
+    for (stock_idx, stock_tile) in stock_tiles.iter().enumerate() {
+        log_debug!(
+            "RUST:   Лист {}: {}x{} (ID: {})",
+            stock_idx + 1,
+            stock_tile.width,
+            stock_tile.height,
+            stock_tile.id
+        );
+    }
+    log_debug!("JAVA аналог: StockSolution информация");
+
+    // if task.is_running() {
+    log_debug!(
+        "RUST DEBUG: Task is running, начинаем обработку {} панелей",
+        tiles.len()
+    );
+    log_debug!("JAVA аналог: if (this.task.isRunning())");
+    assert_eq!(tiles.len(), 15);
+    // ЭТАП 2: Главный цикл размещения панелей
+    for (tile_index, tile) in tiles.iter().enumerate() {
+        let i = tile_index + 1; // Java использует 1-based индекс
+
+        log_debug!(
+            "RUST DEBUG ЭТАП 2: === Размещение панели {} из {} ===",
+            i,
+            tiles.len()
+        );
+        log_debug!("JAVA аналог: for (TileDimensions tileDimensions : this.tiles)");
+        log_debug!(
+            "RUST: Панель {}x{}, ID: {}",
+            tile.width,
+            tile.height,
+            tile.id
+        );
+        log_debug!("JAVA аналог: i = {}", i);
+        let a = 10;
+//   let new_solutions = place_single_tile_debug(tile, &current_solutions, tile_index, &task)?;
+            
+  println!("\nRUST place_single_tile_debug(): === Размещение панели {} ===", tile_index + 1);
+    println!("JAVA аналог: for (TileDimensions tileDimensions : this.tiles) - итерация {}", tile_index + 1);
+    println!("RUST: Панель {}x{}, ID: {}", tile.width, tile.height, tile.id);
+    
+    let mut new_solutions: Vec<Solution> = Vec::new();
+    
+    println!("RUST: ArrayList<Solution> arrayList2 = new ArrayList();");
+    println!("JAVA аналог: новый список решений создан");
+
+
+    println!("RUST: ArrayList<Solution> arrayList2 = new ArrayList();");
+    println!("JAVA аналог: новый список решений создан");
+    
+    // Пробуем разместить панель в каждом существующем решении
+    println!("RUST: Iterator<Solution> it = arrayList.iterator();");
+
+
 
     
+
+
+
+
+
+
+
+
+let mut solution_idx = 0;
+    for solution in current_solutions.clone() {
+        solution_idx += 1;
+        println!("RUST: === Проверяем решение {} ===", solution_idx);
+        println!("JAVA аналог: Iterator<Solution> it = arrayList.iterator() - решение {}", solution_idx);
+        println!("RUST: Решение содержит {} мозаик", solution.mosaics.len());
+        
+        let mut tile_placed = false;
+        
+        // Пробуем каждую мозаику в решении
+        let mut mosaic_idx = 0;
+        for mosaic in &solution.mosaics {
+            mosaic_idx += 1;
+            println!("RUST: === Проверяем мозаику {} ===", mosaic_idx);
+            println!("JAVA аналог: ListIterator<Mosaic> listIterator - мозаика {}", mosaic_idx);
+            println!("RUST: Мозаика размер: {}x{}", mosaic.width(), mosaic.height());
+            println!("RUST: Мозаика материал: {}", mosaic.material());
+            
+            // Проверка совместимости материалов
+            println!("RUST: Проверяем совместимость материалов");
+            println!("JAVA аналог: if (next3.getMaterial() != null && !next3.getMaterial().equals(tileDimensions.getMaterial()))");
+            
+            // В упрощенной версии все материалы совместимы
+            println!("RUST: Материалы совместимы, пробуем разместить");
+            println!("JAVA аналог: материалы совместимы");
+            
+            // ЭТАП 2.1: Проверяем, помещается ли панель
+            if fits(tile, mosaic) {
+                println!("RUST: Панель МОЖЕТ поместиться в мозаику {}", mosaic_idx);
+                println!("JAVA аналог: List<Mosaic> arrayList3 = new ArrayList<>();");
+                
+                // ЭТАП 2.2: Пробуем разместить
+                if let Some(new_mosaic) = try_place_tile_simple(tile, mosaic)? {
+                    println!("RUST: Панель УСПЕШНО размещена в мозаике {}", mosaic_idx);
+                    println!("JAVA аналог: arrayList3.size() > 0");
+                    
+                    // Создаем новое решение
+                    let mut new_solution = solution.clone();
+                    new_solution.replace_mosaic(mosaic_idx - 1, new_mosaic); // -1 так как mosaic_idx 1-based
+                    new_solutions.push(new_solution);
+                    tile_placed = true;
+                    
+                    println!("JAVA аналог: Solution solution = new Solution(next2, next3);");
+                    println!("JAVA аналог: arrayList2.add(solution);");
+                    break; // Размещаем только в первой подходящей мозаике
+                } else {
+                    println!("RUST: Размещение НЕ удалось в мозаике {}", mosaic_idx);
+                }
+            } else {
+                println!("RUST: Панель НЕ помещается в мозаику {}", mosaic_idx);
+            }
+        }
+        
+        // Если панель не поместилась ни в одну мозаику
+        if !tile_placed {
+            println!("RUST: Панель НЕ поместилась ни в одну мозаику решения {}", solution_idx);
+            println!("JAVA аналог: next2.getNoFitPanels().add(tileDimensions);");
+            
+            let mut failed_solution = solution.clone();
+            failed_solution.add_no_fit_tile(tile.clone());
+            new_solutions.push(failed_solution);
+        }
+    }
+    
+    println!("RUST place_single_tile_debug() ЗАВЕРШЕН: Создано {} новых решений", new_solutions.len());
+    println!("JAVA аналог: arrayList2.size() = {}", new_solutions.len());
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+    }
+
     Ok(())
 }
 
@@ -751,3 +993,172 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
 
+/// JAVA аналог: TileDimensions.fits() метод
+/// 
+/// Java код:
+/// ```java
+/// public boolean fits(TileDimensions tileDimensions) {
+///     int i = this.width;  // available space width  
+///     int i2 = tileDimensions.width;  // tile width
+///     return (i >= i2 && this.height >= tileDimensions.height) || 
+///            (this.height >= i2 && i >= tileDimensions.height);
+/// }
+/// ```
+fn fits(tile: &TileDimensions, mosaic: &Mosaic) -> bool {
+    println!("RUST can_tile_fit_in_mosaic(): Проверяем размещение");
+    println!("JAVA аналог: stockPanel.fits(tileDimensions)");
+    
+    // В Java: int i = this.width; (доступное пространство)
+    let available_width = mosaic.width() as u64;
+    let available_height = mosaic.height() as u64;
+    
+    // В Java: int i2 = tileDimensions.width; (размер панели)
+    let tile_width = tile.width;
+    let tile_height = tile.height;
+    
+    println!("RUST: Проверяем: панель {}x{} в мозаику {}x{}", 
+        tile_width, tile_height, available_width, available_height);
+    println!("JAVA аналог: проверка размеров для размещения");
+    
+    // Java логика: (i >= i2 && this.height >= tileDimensions.height)
+    let fits_normal = available_width >= tile_width && available_height >= tile_height;
+    
+    // Java логика: (this.height >= i2 && i >= tileDimensions.height)  
+    let fits_rotated = available_height >= tile_width && available_width >= tile_height;
+    
+    // Java логика: return condition1 || condition2
+    let can_fit = fits_normal || fits_rotated;
+    
+    println!("RUST: Результат проверки: {} (normal: {}, rotated: {})", 
+        can_fit, fits_normal, fits_rotated);
+    println!("JAVA аналог: return ({} >= {} && {} >= {}) || ({} >= {} && {} >= {})",
+        available_width, tile_width, available_height, tile_height,
+        available_height, tile_width, available_width, tile_height);
+    
+    can_fit
+}
+
+
+
+
+/// ЭТАП 2: Размещение одной панели - аналог Java главного цикла
+fn place_single_tile(
+    tile: &TileDimensions,
+    current_solutions: &[Solution],
+    tile_index: usize,
+    task: &Task,
+) -> Result<Vec<Solution>, Box<dyn std::error::Error>> {
+    log_debug!(
+        "\nRUST ЭТАП 2: === Размещение панели {} ===",
+        tile_index + 1
+    );
+    log_debug!("JAVA аналог: for (TileDimensions tileDimensions : this.tiles)");
+    log_debug!(
+        "RUST: Панель {}x{}, ID: {}",
+        tile.width,
+        tile.height,
+        tile.id
+    );
+
+    let mut new_solutions: Vec<Solution> = Vec::new();
+
+    log_debug!("JAVA аналог: ArrayList<Solution> arrayList2 = new ArrayList();");
+
+    // Пробуем разместить панель в каждом существующем решении
+    for (sol_idx, solution) in current_solutions.iter().enumerate() {
+        log_debug!(
+            "RUST: Пробуем решение {} с {} мозаиками",
+            sol_idx + 1,
+            solution.mosaics.len()
+        );
+        log_debug!("JAVA аналог: Iterator<Solution> it = arrayList.iterator();");
+
+        let mut tile_placed = false;
+
+        // Пробуем каждую мозаику в решении
+        for (mosaic_idx, mosaic) in solution.mosaics.iter().enumerate() {
+            log_debug!(
+                "RUST: Пробуем мозаику {} размером {}x{}",
+                mosaic_idx + 1,
+                mosaic.width(),
+                mosaic.height()
+            );
+
+            // ЭТАП 2.1: Проверяем, помещается ли панель
+            if fits(tile, mosaic) {
+                log_debug!(
+                    "RUST: Панель МОЖЕТ поместиться в мозаику {}",
+                    mosaic_idx + 1
+                );
+
+                // ЭТАП 2.2: Пробуем разместить
+                if let Some(new_mosaic) = try_place_tile_simple(tile, mosaic)? {
+                    log_debug!(
+                        "RUST: Панель УСПЕШНО размещена в мозаике {}",
+                        mosaic_idx + 1
+                    );
+
+                    // Создаем новое решение
+                    let mut new_solution = solution.clone();
+                    new_solution.replace_mosaic(mosaic_idx, new_mosaic);
+                    new_solutions.push(new_solution);
+                    tile_placed = true;
+
+                    log_debug!("JAVA аналог: Solution solution = new Solution(next2, next3);");
+                    log_debug!("JAVA аналог: arrayList2.add(solution);");
+                    break; // Размещаем только в первой подходящей мозаике
+                }
+            } else {
+                log_debug!("RUST: Панель НЕ помещается в мозаику {}", mosaic_idx + 1);
+            }
+        }
+
+        // Если панель не поместилась ни в одну мозаику
+        if !tile_placed {
+            log_debug!(
+                "RUST: Панель НЕ поместилась ни в одну мозаику решения {}",
+                sol_idx + 1
+            );
+            log_debug!("JAVA аналог: next2.getNoFitPanels().add(tileDimensions);");
+
+            let mut failed_solution = solution.clone();
+            failed_solution.add_no_fit_tile(tile.clone());
+            new_solutions.push(failed_solution);
+        }
+    }
+
+    log_debug!(
+        "RUST ЭТАП 2 ЗАВЕРШЕН: Создано {} новых решений",
+        new_solutions.len()
+    );
+
+    Ok(new_solutions)
+}
+
+fn try_place_tile_simple(
+    tile: &TileDimensions,
+    mosaic: &Mosaic,
+) -> Result<Option<Mosaic>, Box<dyn std::error::Error>> {
+    
+    println!("RUST try_place_tile_simple_debug(): === Размещение панели ===");
+    println!("RUST: Пытаемся разместить панель {}x{} (ID: {})", tile.width, tile.height, tile.id);
+    println!("JAVA аналог: попытка размещения в мозаике");
+    
+    // Пока что просто создаем копию мозаики и помечаем панель как размещенную
+    let mut new_mosaic = mosaic.clone();
+    
+    // Создаем финальный узел для панели (упрощенная версия)
+    let mut root_node = new_mosaic.root_tile_node().clone();
+    root_node.set_external_id(Some(tile.id as i32));
+    root_node.set_final(true);
+    root_node.set_rotated(tile.is_rotated);
+    
+    new_mosaic.set_root_tile_node(root_node);
+    
+    println!("RUST: Панель размещена как финальная в корневом узле");
+    println!("JAVA аналог: tileNodeFindTile.setExternalId(tileDimensions.getId());");
+    println!("JAVA аналог: tileNodeFindTile.setFinal(true);");
+    println!("RUST try_place_tile_simple_debug(): Размещение успешно");
+    
+    Ok(Some(new_mosaic))
+}
