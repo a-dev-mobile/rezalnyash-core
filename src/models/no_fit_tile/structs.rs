@@ -9,9 +9,9 @@ pub struct NoFitTile {
     /// Unique identifier for the tile
     pub id: i32,
     /// Width of the tile in units
-    pub width: f64,
+    pub width: u64,
     /// Height of the tile in units  
-    pub height: f64,
+    pub height: u64,
     /// Number of tiles of this type needed
     pub count: i32,
     /// Optional label for the tile
@@ -24,8 +24,8 @@ impl Default for NoFitTile {
     fn default() -> Self {
         Self {
             id: 0,
-            width: 0.0,
-            height: 0.0,
+            width: 0,
+            height: 0,
             count: 0,
             label: None,
             material: None,

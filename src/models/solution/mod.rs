@@ -38,3 +38,41 @@ pub struct Solution {
     /// Optional creator thread group identifier
     pub creator_thread_group: Option<String>,
 }
+
+
+impl Solution {
+    pub fn new() -> Self {
+        Self {
+            id: 0,
+            timestamp: 0,
+            mosaics: Vec::new(),
+            no_fit_panels: Vec::new(),
+            aux_info: None,
+            creator_thread_group: None,
+            unused_stock_panels: VecDeque::new(),
+        }
+    }
+    
+    pub fn add_mosaic(&mut self, mosaic: Mosaic) {
+        self.mosaics.push(mosaic);
+    }
+    
+    pub fn replace_mosaic(&mut self, index: usize, new_mosaic: Mosaic) {
+        if index < self.mosaics.len() {
+            self.mosaics[index] = new_mosaic;
+        }
+    }
+    
+    pub fn add_no_fit_tile(&mut self, tile: TileDimensions) {
+        use crate::models::no_fit_tile::NoFitTile;
+        let no_fit = NoFitTile {
+            id: tile.id,
+            width: tile.width,
+            height: tile.height,
+            count: 1,
+            label: None,
+            material: None,
+        };
+        self.no_fit_panels.push(no_fit);
+    }
+}

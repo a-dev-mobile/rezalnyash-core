@@ -190,9 +190,10 @@ fn perform_cutting_algorithm(
                 .as_millis() as u64,
             mosaics: vec![], // Здесь будут реальные мозаики из алгоритма
             no_fit_panels: vec![],
-            unused_stock_panels: VecDeque::new(),
+            // unused_stock_panels: VecDeque::new(),
             aux_info: Some(builder.aux_info.clone()),
             creator_thread_group: Some(builder.group.clone()),
+            unused_stock_panels: VecDeque::new(),
         };
 
         return Ok(Some(solution));
