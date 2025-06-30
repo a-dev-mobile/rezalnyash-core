@@ -2,7 +2,7 @@ use std::{collections::VecDeque, sync::atomic::AtomicU32};
 
 use crate::{
     enums::cut_orientation_preference::CutOrientationPreference, log_debug, log_error, log_info, models::{
-        configuration::Configuration, mosaic::Mosaic, performance_thresholds::PerformanceThresholds, permutation_thread_spawner::{PermutationThreadSpawner, ProgressTracker}, solution::Solution, stock_solution::StockPanelPicker, task::Task, tile_dimensions::TileDimensions
+        configuration::Configuration, mosaic::Mosaic, performance_thresholds::PerformanceThresholds, permutation_thread_spawner::{PermutationThreadSpawner, ProgressTracker}, solution::{self, Solution}, stock_solution::StockPanelPicker, task::Task, tile_dimensions::TileDimensions
     }
 };
 

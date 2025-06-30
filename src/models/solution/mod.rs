@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use std::sync::atomic::AtomicU32;
 
 use crate::models::mosaic::Mosaic;
+use crate::models::no_fit_tile::NoFitTile;
 use crate::models::tile_dimensions::TileDimensions;
 
 
@@ -26,7 +27,7 @@ pub struct Solution {
     pub mosaics: Vec<Mosaic>,
     
     /// Panels that couldn't be fit into any mosaic
-    pub no_fit_panels: Vec<TileDimensions>,
+    pub no_fit_panels: Vec<NoFitTile>,
     
     /// Unused stock panels available for cutting
     pub unused_stock_panels: VecDeque<TileDimensions>,
