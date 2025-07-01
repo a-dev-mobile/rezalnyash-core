@@ -1,5 +1,7 @@
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CutOrientationPreference {
     /// Both horizontal and vertical cuts are considered (value: 0)
     Both = 0,

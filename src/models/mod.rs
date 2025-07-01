@@ -1,4 +1,5 @@
 pub mod client_info;
+pub mod configuration;
 pub mod cut;
 pub mod performance_thresholds;
 pub mod tile;
