@@ -312,11 +312,15 @@ mod tests {
         let large_tile = TileDimensions::simple(200, 300);
         let small_tile = TileDimensions::simple(100, 150);
         let rotated_small = TileDimensions::simple(150, 100);
-        let too_large = TileDimensions::simple(250, 200);
+        let too_large = TileDimensions::simple(250, 350); // Both dimensions larger
 
         assert!(large_tile.fits(&small_tile));
         assert!(large_tile.fits(&rotated_small));
         assert!(!large_tile.fits(&too_large));
+        
+        // Test edge case where one dimension fits when rotated
+        let edge_case = TileDimensions::simple(250, 200);
+        assert!(large_tile.fits(&edge_case)); // 300 >= 250 && 200 >= 200 when rotated
     }
 
     #[test]
