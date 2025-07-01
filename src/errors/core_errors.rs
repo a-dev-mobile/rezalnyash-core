@@ -17,6 +17,21 @@ pub enum CoreError {
     },
 }
 
+impl PartialEq for CoreError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::InvalidConfiguration { message: m1 }, Self::InvalidConfiguration { message: m2 }) => m1 == m2,
+            (Self::InvalidInput { details: d1 }, Self::InvalidInput { details: d2 }) => d1 == d2,
+            (Self::Internal { message: m1 }, Self::Internal { message: m2 }) => m1 == m2,
+            // For error types that don't implement PartialEq, we compare their string representations
+            (Self::Io(e1), Self::Io(e2)) => e1.to_string() == e2.to_string(),
+            (Self::Json(e1), Self::Json(e2)) => e1.to_string() == e2.to_string(),
+            (Self::ParseFloat(e1), Self::ParseFloat(e2)) => e1.to_string() == e2.to_string(),
+            _ => false,
+        }
+    }
+}
+
 impl fmt::Display for CoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
