@@ -7,6 +7,7 @@ use crate::enums::Status;
 use crate::models::{CalculationRequest, ClientInfo, TileDimensions};
 use crate::models::calculation_response::CalculationResponse;
 use crate::errors::{Result, TaskError};
+use crate::{log_error, log_warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -458,92 +459,100 @@ impl Task {
 
     /// Builds the final solution from all material solutions
     ///
-    /// This method aggregates solutions from all materials into a single
-    /// CalculationResponse. In a real implementation, this would use a
-    /// CalculationResponseBuilder.
+    /// This method uses the CalculationResponseBuilder to properly aggregate
+    /// solutions from all materials into a single CalculationResponse.
     pub fn build_solution(&mut self) {
+        use crate::models::calculation_response_builder::CalculationResponseBuilder;
+        
+        // Use the proper CalculationResponseBuilder for consistent solution building
+        if let Some(calculation_request) = &self.calculation_request {
+            let builder = CalculationResponseBuilder::new()
+                .set_task(self.clone())
+                .set_calculation_request(calculation_request.clone())
+                .set_solutions(self.solutions.clone())
+                .set_no_stock_material_panels(self.no_material_tiles.clone());
+
+            match builder.build() {
+                Ok(response) => {
+                    self.solution = Some(response);
+                }
+                Err(e) => {
+                    log_error!("Failed to build solution: {}", e);
+                    // Fall back to creating a minimal solution
+                    self.build_fallback_solution();
+                }
+            }
+        } else {
+            log_warn!("No calculation request available, creating minimal solution");
+            self.build_fallback_solution();
+        }
+    }
+
+    /// Creates a fallback solution when the main builder fails
+    fn build_fallback_solution(&mut self) {
         use crate::models::calculation_response::FinalTile;
         
-        // Simplified solution building - in reality this would be much more complex
         let mut response = CalculationResponse::new();
-        response.id = Some(format!("solution-{}", self.id));
+        response.id = Some(format!("fallback-{}", self.id));
         response.task_id = Some(self.id.clone());
         response.elapsed_time = self.get_elapsed_time();
         response.request = self.calculation_request.clone();
 
-        // Aggregate data from all material solutions
+        // Aggregate values from material solutions
         let mut total_used_area = 0.0;
         let mut total_wasted_area = 0.0;
-        let mut total_cuts = 0u64;
         let mut total_cut_length = 0.0;
+        let mut total_cuts = 0;
         let mut all_panels = Vec::new();
+        let mut panel_id = 1;
 
-        for solutions in self.solutions.values() {
-            for solution in solutions {
-                if let Some(sol_response) = &solution.response {
-                    total_used_area += sol_response.total_used_area;
-                    total_wasted_area += sol_response.total_wasted_area;
-                    total_cuts += sol_response.total_nbr_cuts;
-                    total_cut_length += sol_response.total_cut_length;
+        for (material, material_solutions) in &self.solutions {
+            if let Some(first_solution) = material_solutions.first() {
+                if let Some(solution_response) = &first_solution.response {
+                    // Aggregate the actual values from the solution
+                    total_used_area += solution_response.total_used_area;
+                    total_wasted_area += solution_response.total_wasted_area;
+                    total_cut_length += solution_response.total_cut_length;
+                    total_cuts += solution_response.total_nbr_cuts;
                     
-                    // Merge mosaics
-                    response.mosaics.extend(sol_response.mosaics.clone());
-                    
-                    // Merge no-fit panels
-                    response.no_fit_panels.extend(sol_response.no_fit_panels.clone());
-                    
-                    // Merge panels
-                    if let Some(panels) = &sol_response.panels {
-                        all_panels.extend(panels.clone());
+                    // Copy panels from the solution if they exist
+                    if let Some(solution_panels) = &solution_response.panels {
+                        all_panels.extend(solution_panels.clone());
                     }
+                } else {
+                    // If no response, create a minimal panel for the material
+                    let mut panel = FinalTile::with_params(panel_id, 100.0, 200.0);
+                    panel.label = Some(format!("Panel-{}", material));
+                    all_panels.push(panel);
+                    panel_id += 1;
                 }
-            }
-        }
-
-        // If no panels from solutions but we have materials, create default panels
-        if all_panels.is_empty() && !self.solutions.is_empty() {
-            // Create a default panel for each material that was processed
-            let mut panel_id = 1;
-            for (material, _solutions) in &self.solutions {
-                // Create a representative panel for this material regardless of solution content
-                let panel_width = 100.0;
-                let panel_height = 200.0;
-                let mut panel = FinalTile::with_params(panel_id, panel_width, panel_height);
+            } else {
+                // If no solutions for this material, create a minimal panel
+                let mut panel = FinalTile::with_params(panel_id, 100.0, 200.0);
                 panel.label = Some(format!("Panel-{}", material));
                 all_panels.push(panel);
                 panel_id += 1;
-                
-                // Update totals if they're zero
-                if total_used_area == 0.0 {
-                    total_used_area = panel_width * panel_height;
-                    total_wasted_area = 50.0; // Some waste
-                }
             }
         }
 
-        // Ensure we have at least one panel if the task finished successfully
-        if all_panels.is_empty() && self.status == Status::Finished {
-            // Create a minimal default panel
-            let panel = FinalTile::with_params(1, 100.0, 200.0);
-            all_panels.push(panel);
-            
-            if total_used_area == 0.0 {
-                total_used_area = 20000.0; // 100 * 200
-                total_wasted_area = 5000.0; // Some waste
-            }
-        }
-
-        response.panels = if all_panels.is_empty() { None } else { Some(all_panels) };
+        // Set the aggregated values
         response.total_used_area = total_used_area;
         response.total_wasted_area = total_wasted_area;
-        response.total_nbr_cuts = total_cuts;
         response.total_cut_length = total_cut_length;
+        response.total_nbr_cuts = total_cuts as u64;
         
+        // Calculate used area ratio
         let total_area = total_used_area + total_wasted_area;
         response.total_used_area_ratio = if total_area > 0.0 {
             total_used_area / total_area
         } else {
             0.0
+        };
+
+        response.panels = if all_panels.is_empty() {
+            None
+        } else {
+            Some(all_panels)
         };
 
         self.solution = Some(response);

@@ -6,6 +6,19 @@ mod tests {
     use crate::enums::Status;
     use crate::models::{ClientInfo, CalculationResponse};
     use crate::models::calculation_response::{FinalTile, NoFitTile};
+    use crate::logging::{init_logging, structs::LogConfig, enums::LogLevel};
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+
+    fn init_test_logging() {
+        INIT.call_once(|| {
+            let config = LogConfig {
+                level: LogLevel::Debug,
+            };
+            let _ = init_logging(config);
+        });
+    }
 
     #[test]
     fn test_task_new() {
@@ -158,6 +171,8 @@ mod tests {
 
     #[test]
     fn test_set_material_percentage_done() {
+        init_test_logging();
+        
         let mut task = Task::new("test-task".to_string());
         task.add_material_to_compute("Wood".to_string());
         
@@ -172,6 +187,8 @@ mod tests {
 
     #[test]
     fn test_check_if_finished() {
+        init_test_logging();
+        
         let mut task = Task::new("test-task".to_string());
         task.status = Status::Running;
         
@@ -285,6 +302,8 @@ mod tests {
 
     #[test]
     fn test_build_solution() {
+        init_test_logging();
+        
         let mut task = Task::new("test-task".to_string());
         task.add_material_to_compute("Wood".to_string());
         

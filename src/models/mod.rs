@@ -1,5 +1,6 @@
 pub mod calculation_request;
 pub mod calculation_response;
+pub mod calculation_response_builder;
 pub mod calculation_submission_result;
 pub mod client_info;
 pub mod configuration;
@@ -20,6 +21,7 @@ pub use calculation_response::{
     CalculationResponse, Mosaic, Tile as ResponseTile, Edge as ResponseEdge,
     NoFitTile, FinalTile, CutResponse
 };
+pub use calculation_response_builder::CalculationResponseBuilder;
 pub use calculation_submission_result::CalculationSubmissionResult;
 pub use client_info::{ClientInfo, ClientInfoError};
 pub use cut::{Cut, CutBuilder};
