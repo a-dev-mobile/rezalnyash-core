@@ -7,6 +7,7 @@ pub mod edge_banding;
 pub mod grouped_tile_dimensions;
 pub mod mosaic;
 pub mod performance_thresholds;
+pub mod solution_comparator;
 pub mod tile;
 pub mod tile_dimensions;
 pub mod tile_node;
