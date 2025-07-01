@@ -1,4 +1,5 @@
 pub mod calculation_request;
+pub mod calculation_response;
 pub mod client_info;
 pub mod configuration;
 pub mod cut;
@@ -9,8 +10,13 @@ pub mod performance_thresholds;
 pub mod tile;
 pub mod tile_dimensions;
 pub mod tile_node;
+pub mod task;
 
 pub use calculation_request::{CalculationRequest, Panel, Edge, CalculationRequestError};
+pub use calculation_response::{
+    CalculationResponse, Mosaic, Tile as ResponseTile, Edge as ResponseEdge,
+    NoFitTile, FinalTile, CutResponse
+};
 pub use client_info::{ClientInfo, ClientInfoError};
 pub use cut::{Cut, CutBuilder};
 pub use edge_banding::{EdgeBanding, EdgeBandingError};
@@ -19,3 +25,4 @@ pub use performance_thresholds::PerformanceThresholds;
 pub use tile::Tile;
 pub use tile_dimensions::TileDimensions;
 pub use tile_node::TileNode;
+pub use task::{Task, Solution};
