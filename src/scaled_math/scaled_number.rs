@@ -11,25 +11,25 @@ use super::errors::ScaledError;
 /// # Примеры
 ///
 /// ```rust
-/// use scaled_math::ScaledNumber;
+/// use rezalnyas_core::scaled_math::ScaledNumber;
 ///
 /// // Создание из дробного числа с точностью 2 знака
-/// let price = ScaledNumber::from_f64(12.34, 2)?;
-/// let tax = ScaledNumber::from_f64(1.23, 2)?;
+/// let price = ScaledNumber::from_f64(12.34, 2).unwrap();
+/// let tax = ScaledNumber::from_f64(1.23, 2).unwrap();
 ///
 /// // Арифметические операции
 /// let total = price + tax;
 /// assert_eq!(total.to_f64(), 13.57);
 ///
 /// // Преобразование в целые типы
-/// let amount = ScaledNumber::from_f64(42.0, 0)?;
-/// assert_eq!(amount.to_u32()?, 42u32);
-/// assert_eq!(amount.to_u64()?, 42u64);
+/// let amount = ScaledNumber::from_f64(42.0, 0).unwrap();
+/// assert_eq!(amount.to_u32().unwrap(), 42u32);
+/// assert_eq!(amount.to_u64().unwrap(), 42u64);
 ///
 /// // Сравнения точные
-/// let a = ScaledNumber::from_f64(0.1, 3)?;
-/// let b = ScaledNumber::from_f64(0.2, 3)?;
-/// let c = ScaledNumber::from_f64(0.3, 3)?;
+/// let a = ScaledNumber::from_f64(0.1, 3).unwrap();
+/// let b = ScaledNumber::from_f64(0.2, 3).unwrap();
+/// let c = ScaledNumber::from_f64(0.3, 3).unwrap();
 /// assert_eq!(a + b, c); // Работает правильно!
 /// ```
 #[derive(Debug, Clone, Copy, Hash)]
