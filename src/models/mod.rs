@@ -1,3 +1,4 @@
+pub mod calculation_request;
 pub mod client_info;
 pub mod configuration;
 pub mod cut;
@@ -8,6 +9,7 @@ pub mod tile;
 pub mod tile_dimensions;
 pub mod tile_node;
 
+pub use calculation_request::{CalculationRequest, Panel, Edge, CalculationRequestError};
 pub use client_info::{ClientInfo, ClientInfoError};
 pub use cut::{Cut, CutBuilder};
 pub use grouped_tile_dimensions::GroupedTileDimensions;
