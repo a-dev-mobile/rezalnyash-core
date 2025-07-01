@@ -1,4 +1,5 @@
 pub mod app_error;
+pub mod client_info_errors;
 pub mod core_errors;
 pub mod task_errors;
 pub mod computation_errors;
@@ -7,6 +8,7 @@ pub mod stock_errors;
 
 // Re-export the main types for convenience
 pub use app_error::{AppError, Result};
+pub use client_info_errors::ClientInfoError;
 pub use core_errors::CoreError;
 pub use task_errors::TaskError;
 pub use computation_errors::ComputationError;
