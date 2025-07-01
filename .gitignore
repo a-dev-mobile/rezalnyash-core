@@ -5,3 +5,4 @@ directory_structure.log
 *.html
 .vscode/*
 Makefile
+Java/**
