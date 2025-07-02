@@ -8,24 +8,35 @@ use crate::models::task::Task;
 use crate::models::client_info::ClientInfo;
 use crate::models::calculation_request::{CalculationRequest, Panel};
 use crate::models::running_tasks::running_tasks::RunningTasks;
+use crate::models::running_tasks::test_utils::GLOBAL_TEST_MUTEX;
 use crate::enums::Status;
-use std::sync::{Arc, Mutex};
+use crate::logging::{init_logging, LogConfig, LogLevel};
+use std::sync::{Arc, Once};
 use std::thread;
 use std::time::Duration;
 
-// Global mutex to ensure tests run sequentially since they share singleton state
-static TEST_MUTEX: Mutex<()> = Mutex::new(());
+// Ensure logging is initialized only once
+static INIT: Once = Once::new();
+
+fn init_test_logging() {
+    INIT.call_once(|| {
+        let config = LogConfig {
+            level: LogLevel::Debug,
+        };
+        let _ = init_logging(config);
+    });
+}
 
 /// Mock logger for testing
 #[derive(Debug, Clone)]
 struct MockLogger {
-    messages: Arc<Mutex<Vec<String>>>,
+    messages: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl MockLogger {
     fn new() -> Self {
         Self {
-            messages: Arc::new(Mutex::new(Vec::new())),
+            messages: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 
@@ -63,13 +74,13 @@ impl CutListLogger for MockLogger {
 /// Mock optimizer service for testing
 #[derive(Debug, Clone)]
 struct MockOptimizerService {
-    terminate_results: Arc<Mutex<std::collections::HashMap<String, i32>>>,
+    terminate_results: Arc<std::sync::Mutex<std::collections::HashMap<String, i32>>>,
 }
 
 impl MockOptimizerService {
     fn new() -> Self {
         Self {
-            terminate_results: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            terminate_results: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -154,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_new_watch_dog() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         let watch_dog = WatchDog::new();
         
         assert!(!watch_dog.is_running());
@@ -165,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_with_dependencies() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         let task_executor = Arc::new(MockThreadPoolExecutor::new(2, 4, 1, 10));
         let optimizer_service = Arc::new(MockOptimizerService::new());
         let logger = Arc::new(MockLogger::new());
@@ -182,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_getters_and_setters() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         let mut watch_dog = WatchDog::new();
         
         // Test task executor
@@ -203,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_task_reports() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         let watch_dog = WatchDog::new();
         
         let reports = watch_dog.get_task_reports().unwrap();
@@ -212,7 +223,7 @@ mod tests {
 
     #[test]
     fn test_start_and_stop() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         let mut watch_dog = WatchDog::new();
         
         // Initially not running
@@ -240,11 +251,14 @@ mod tests {
 
     #[test]
     fn test_pause_and_resume() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         let mut watch_dog = WatchDog::new();
         
         // Start the watch dog
         let _control_sender = watch_dog.start().unwrap();
+        
+        // Give it time to start properly
+        thread::sleep(Duration::from_millis(50));
         
         // Initially not paused
         assert!(!watch_dog.is_paused());
@@ -253,8 +267,12 @@ mod tests {
         let pause_result = watch_dog.pause();
         assert!(pause_result.is_ok());
         
-        // Give it time to process the pause signal
-        thread::sleep(Duration::from_millis(100));
+        // Give it time to process the pause signal and retry until paused
+        let mut attempts = 0;
+        while !watch_dog.is_paused() && attempts < 10 {
+            thread::sleep(Duration::from_millis(100));
+            attempts += 1;
+        }
         assert!(watch_dog.is_paused());
         
         // Resume
@@ -262,7 +280,7 @@ mod tests {
         assert!(resume_result.is_ok());
         
         // Give it time to process the resume signal
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(200));
         assert!(!watch_dog.is_paused());
         
         // Stop
@@ -271,7 +289,7 @@ mod tests {
 
     #[test]
     fn test_format_elapsed_time() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         
         assert_eq!(WatchDog::format_elapsed_time(500), "500ms");
         assert_eq!(WatchDog::format_elapsed_time(1500), "1.5s");
@@ -281,7 +299,13 @@ mod tests {
 
     #[test]
     fn test_monitoring_stats() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
+        let _lock = GLOBAL_TEST_MUTEX.lock().unwrap();
+        let running_tasks = RunningTasks::get_instance();
+        
+        // Clear any existing tasks from previous tests
+        let _ = running_tasks.clear_all();
+        
         let watch_dog = WatchDog::new();
         
         let stats = watch_dog.get_monitoring_stats().unwrap();
@@ -292,7 +316,7 @@ mod tests {
 
     #[test]
     fn test_validate() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         let watch_dog = WatchDog::new();
         
         // Should validate successfully even without dependencies
@@ -302,7 +326,7 @@ mod tests {
 
     #[test]
     fn test_default_implementations() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         
         // Test DefaultCutListLogger
         let logger = DefaultCutListLogger;
@@ -329,8 +353,8 @@ mod tests {
 
     #[test]
     fn test_thread_safety() {
-        let _guard = TEST_MUTEX.lock().unwrap();
-        let watch_dog = Arc::new(Mutex::new(WatchDog::new()));
+        init_test_logging();
+        let watch_dog = Arc::new(std::sync::Mutex::new(WatchDog::new()));
         let mut handles = vec![];
         
         // Spawn multiple threads to test concurrent access
@@ -354,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_drop_behavior() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         let mut watch_dog = WatchDog::new();
         
         // Start the watch dog
@@ -370,7 +394,7 @@ mod tests {
 
     #[test]
     fn test_mock_logger() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         let logger = MockLogger::new();
         
         logger.error("test error");
@@ -388,7 +412,7 @@ mod tests {
 
     #[test]
     fn test_mock_optimizer_service() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         let optimizer = MockOptimizerService::new();
         
         // Default result should be 0
@@ -404,21 +428,29 @@ mod tests {
 
     #[test]
     fn test_control_messages() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
         let mut watch_dog = WatchDog::new();
         
         // Start the watch dog
         let control_sender = watch_dog.start().unwrap();
         assert!(watch_dog.is_running());
         
+        // Give it time to start properly
+        thread::sleep(Duration::from_millis(50));
+        
         // Send pause message
         control_sender.send(WatchDogControl::Pause).unwrap();
-        thread::sleep(Duration::from_millis(100));
+        // Give it time to process the pause signal and retry until paused
+        let mut attempts = 0;
+        while !watch_dog.is_paused() && attempts < 10 {
+            thread::sleep(Duration::from_millis(100));
+            attempts += 1;
+        }
         assert!(watch_dog.is_paused());
         
         // Send resume message
         control_sender.send(WatchDogControl::Resume).unwrap();
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(200));
         assert!(!watch_dog.is_paused());
         
         // Send stop message
@@ -429,7 +461,8 @@ mod tests {
 
     #[test]
     fn test_basic_functionality() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        init_test_logging();
+        let _lock = GLOBAL_TEST_MUTEX.lock().unwrap();
         let running_tasks = RunningTasks::get_instance();
         
         // Clear any existing tasks
