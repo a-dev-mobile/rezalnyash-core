@@ -757,14 +757,11 @@ impl std::fmt::Display for RunningTasks {
 mod tests {
     use super::*;
     use crate::enums::Status;
-    use std::sync::Mutex;
-
-    // Global mutex to ensure tests run sequentially since they share singleton state
-    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+    use crate::models::running_tasks::test_utils::GLOBAL_TEST_MUTEX;
 
     #[test]
     fn test_singleton_instance() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance1 = RunningTasks::get_instance();
         let instance2 = RunningTasks::get_instance();
         
@@ -774,7 +771,7 @@ mod tests {
 
     #[test]
     fn test_add_and_get_task() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = RunningTasks::get_instance();
         let task = Task::new("test-task-1".to_string());
         let task_id = task.id.clone();
@@ -793,7 +790,7 @@ mod tests {
 
     #[test]
     fn test_task_counters() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = RunningTasks::get_instance();
         let _ = instance.clear_all();
         
@@ -820,7 +817,7 @@ mod tests {
 
     #[test]
     fn test_remove_tasks() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = RunningTasks::get_instance();
         let _ = instance.clear_all();
         
@@ -846,7 +843,7 @@ mod tests {
 
     #[test]
     fn test_task_statistics() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = RunningTasks::get_instance();
         let _ = instance.clear_all();
         

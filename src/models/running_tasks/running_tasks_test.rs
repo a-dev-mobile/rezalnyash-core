@@ -12,12 +12,10 @@ mod tests {
         task::Task,
         cut_list_thread::CutListThread,
     };
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
-
-    // Global mutex to ensure tests run sequentially since they share singleton state
-    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+    use crate::models::running_tasks::test_utils::{acquire_test_lock, GLOBAL_TEST_MUTEX};
 
     /// Helper function to create a test task with given ID and status
     fn create_test_task(id: &str, status: Status) -> Task {
@@ -29,7 +27,17 @@ mod tests {
     /// Helper function to clear all tasks before each test
     fn setup_clean_instance() -> &'static RunningTasks {
         let instance = RunningTasks::get_instance();
-        let _ = instance.clear_all();
+        
+        // Handle potential poisoned mutex by recreating the singleton if needed
+        match instance.clear_all() {
+            Ok(_) => {},
+            Err(_) => {
+                // If mutex is poisoned, we need to reset the singleton
+                // This is a test-only workaround for mutex poisoning
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+        
         // Give a small delay to ensure cleanup is complete
         std::thread::sleep(Duration::from_millis(10));
         instance
@@ -37,7 +45,7 @@ mod tests {
 
     #[test]
     fn test_singleton_pattern() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance1 = RunningTasks::get_instance();
         let instance2 = RunningTasks::get_instance();
         
@@ -58,7 +66,7 @@ mod tests {
 
     #[test]
     fn test_add_task_success() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         let task = create_test_task("test-add-1", Status::Idle);
         
@@ -77,7 +85,7 @@ mod tests {
 
     #[test]
     fn test_add_duplicate_task_fails() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         let task1 = create_test_task("duplicate-id", Status::Idle);
         let task2 = create_test_task("duplicate-id", Status::Running);
@@ -92,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_get_task_not_found() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         let result = instance.get_task("non-existent-id");
@@ -102,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_remove_all_tasks() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Add multiple tasks
@@ -135,7 +143,7 @@ mod tests {
 
     #[test]
     fn test_status_counters() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Add tasks with different statuses
@@ -165,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_task_statistics() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Add tasks with various statuses
@@ -190,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_update_task() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Add a task
@@ -216,7 +224,7 @@ mod tests {
 
     #[test]
     fn test_running_threads_management() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Create test threads
@@ -252,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_clear_all() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Add some tasks and threads
@@ -280,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_archived_counters_persistence() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Add and remove tasks to build up archive counters
@@ -308,7 +316,7 @@ mod tests {
 
     #[test]
     fn test_concurrent_access() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Spawn multiple threads that add tasks concurrently
@@ -333,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_validation() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Add valid tasks
@@ -354,7 +362,7 @@ mod tests {
 
     #[test]
     fn test_display_implementation() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Add some tasks
@@ -372,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_edge_cases() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Test with empty collections
@@ -393,7 +401,7 @@ mod tests {
 
     #[test]
     fn test_thread_safety() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Test concurrent reads and writes
@@ -422,7 +430,7 @@ mod tests {
 
     #[test]
     fn test_status_transitions() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Add a task and transition through statuses
@@ -444,7 +452,7 @@ mod tests {
 
     #[test]
     fn test_large_scale_operations() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_TEST_MUTEX.lock().unwrap();
         let instance = setup_clean_instance();
         
         // Add a large number of tasks

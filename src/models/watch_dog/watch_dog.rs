@@ -421,6 +421,8 @@ impl WatchDog {
     ) {
         log_info!("WatchDog monitoring loop started");
 
+        let mut last_monitoring_cycle = std::time::Instant::now();
+
         loop {
             // Check for control messages (non-blocking)
             if let Ok(control_msg) = control_receiver.try_recv() {
@@ -441,32 +443,37 @@ impl WatchDog {
                 }
             }
 
-            // Skip monitoring if paused
+            // Skip monitoring if paused, but still check for control messages frequently
             if *is_paused.lock().unwrap() {
-                thread::sleep(Duration::from_millis(RUNNING_INTERVAL));
+                thread::sleep(Duration::from_millis(100)); // Shorter sleep when paused
                 continue;
             }
 
-            // Perform monitoring cycle
-            if let Err(e) = Self::monitoring_cycle(
-                running_tasks,
-                &task_executor,
-                &cut_list_optimizer_service,
-                &cut_list_logger,
-                &task_reports,
-            ) {
-                cut_list_logger.error_with_exception("Error during monitoring cycle", &e);
+            // Only perform monitoring cycle if enough time has passed
+            if last_monitoring_cycle.elapsed() >= Duration::from_millis(RUNNING_INTERVAL) {
+                // Perform monitoring cycle
+                if let Err(e) = Self::monitoring_cycle(
+                    running_tasks,
+                    &task_executor,
+                    &cut_list_optimizer_service,
+                    &cut_list_logger,
+                    &task_reports,
+                ) {
+                    cut_list_logger.error_with_exception("Error during monitoring cycle", &e);
+                }
+
+                // Clean up finished tasks
+                Self::clean_finished_tasks(
+                    running_tasks,
+                    &cut_list_optimizer_service,
+                    &cut_list_logger,
+                );
+
+                last_monitoring_cycle = std::time::Instant::now();
             }
 
-            // Clean up finished tasks
-            Self::clean_finished_tasks(
-                running_tasks,
-                &cut_list_optimizer_service,
-                &cut_list_logger,
-            );
-
-            // Sleep before next cycle
-            thread::sleep(Duration::from_millis(RUNNING_INTERVAL));
+            // Short sleep to be responsive to control messages
+            thread::sleep(Duration::from_millis(100));
         }
 
         log_info!("WatchDog monitoring loop ended");
