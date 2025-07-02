@@ -6,3 +6,6 @@
 pub mod calculation_response_builder;
 
 pub use calculation_response_builder::CalculationResponseBuilder;
+
+#[cfg(test)]
+mod calculation_response_builder_test;
