@@ -18,6 +18,7 @@ pub mod tile_node;
 pub mod task;
 pub mod stock;
 pub mod running_tasks;
+pub mod watch_dog;
 
 pub use arrangement::Arrangement;
 pub use calculation_request::{CalculationRequest, Panel, Edge, CalculationRequestError};

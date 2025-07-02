@@ -45,6 +45,17 @@ macro_rules! log_debug {
     };
 }
 
+/// Макрос для логирования на уровне TRACE
+#[macro_export]
+macro_rules! log_trace {
+    ($($arg:tt)*) => {
+        $crate::logging::init::AppLogger::log(
+            $crate::logging::enums::LogLevel::Debug,
+            &format!($($arg)*)
+        );
+    };
+}
+
 /// Простые функции для логирования
 pub fn error(message: &str) {
     AppLogger::log(LogLevel::Error, message);
