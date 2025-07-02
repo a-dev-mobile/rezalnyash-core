@@ -31,6 +31,12 @@ pub enum TaskError {
         tile_material: String,
         mosaic_material: String,
     },
+    TaskLockError {
+        operation: String,
+    },
+    TaskAlreadyExists {
+        task_id: String,
+    },
 }
 
 impl fmt::Display for TaskError {
@@ -62,6 +68,12 @@ impl fmt::Display for TaskError {
                     "Material mismatch: tile[{}] mosaic[{}]",
                     tile_material, mosaic_material
                 )
+            }
+            Self::TaskLockError { operation } => {
+                write!(f, "Task lock error during operation: {}", operation)
+            }
+            Self::TaskAlreadyExists { task_id } => {
+                write!(f, "Task already exists with ID: {}", task_id)
             }
         }
     }
