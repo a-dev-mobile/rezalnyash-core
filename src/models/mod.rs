@@ -1,3 +1,4 @@
+pub mod arrangement;
 pub mod calculation_request;
 pub mod calculation_response;
 pub mod calculation_response_builder;
@@ -17,6 +18,7 @@ pub mod tile_node;
 pub mod task;
 pub mod stock;
 
+pub use arrangement::Arrangement;
 pub use calculation_request::{CalculationRequest, Panel, Edge, CalculationRequestError};
 pub use calculation_response::{
     CalculationResponse, Mosaic, Tile as ResponseTile, Edge as ResponseEdge,
