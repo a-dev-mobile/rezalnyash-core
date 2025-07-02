@@ -197,6 +197,11 @@ impl CalculationResponseBuilder {
         // Add no-stock material panels if any
         if let Some(no_stock_panels) = &self.no_stock_material_panels {
             for panel in no_stock_panels {
+                // Ensure we have an aggregated response to work with
+                if aggregated_solution.response.is_none() {
+                    aggregated_solution.response = Some(CalculationResponse::new());
+                }
+                
                 if let Some(agg_response) = &mut aggregated_solution.response {
                     agg_response.no_fit_panels.push(NoFitTile {
                         id: panel.id(),
@@ -253,9 +258,9 @@ impl CalculationResponseBuilder {
             }
         }
 
-        // Set totals
-        calculation_response.total_used_area = total_used_area;
-        calculation_response.total_wasted_area = total_wasted_area;
+        // Set totals (scale down by factor)
+        calculation_response.total_used_area = total_used_area / task.factor;
+        calculation_response.total_wasted_area = total_wasted_area / task.factor;
         calculation_response.total_cut_length = total_cut_length;
         calculation_response.total_nbr_cuts = total_cuts;
         calculation_response.elapsed_time = task.get_elapsed_time();

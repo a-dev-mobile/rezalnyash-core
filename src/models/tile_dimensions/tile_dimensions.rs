@@ -194,6 +194,20 @@ impl Hash for TileDimensions {
     }
 }
 
+impl Default for TileDimensions {
+    fn default() -> Self {
+        Self {
+            id: -1,
+            width: 0,
+            height: 0,
+            material: DEFAULT_MATERIAL.to_string(),
+            orientation: 0,
+            label: None,
+            is_rotated: false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
