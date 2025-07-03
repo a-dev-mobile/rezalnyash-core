@@ -15,7 +15,7 @@ const CALCULATION_RESPONSE_VERSION: &str = "1.2";
 ///
 /// This is a direct conversion of the Java CalculationResponse class,
 /// maintaining all fields and functionality while using Rust idioms.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone,  PartialEq, Serialize, Deserialize)]
 pub struct CalculationResponse {
     /// Unique identifier for this response
     pub id: Option<String>,

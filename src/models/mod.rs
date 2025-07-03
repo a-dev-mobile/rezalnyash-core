@@ -20,6 +20,7 @@ pub mod stock;
 pub mod running_tasks;
 pub mod watch_dog;
 pub mod stats;
+pub mod task_status_response;
 
 
 pub use arrangement::Arrangement;

@@ -39,6 +39,9 @@ pub enum ServiceError {
     ServiceValidationError {
         message: String,
     },
+        ThreadPoolError {
+        message: String,
+    },
     ServiceNotInitialized,
 }
 
@@ -84,6 +87,9 @@ impl fmt::Display for ServiceError {
             }
             Self::ServiceValidationError { message } => {
                 write!(f, "Service validation error: {}", message)
+            }
+            Self::ThreadPoolError { message } => {
+                write!(f, "Thread pool error: {}", message)
             }
             Self::ServiceNotInitialized => write!(f, "Service not initialized"),
         }
