@@ -30,6 +30,16 @@ pub enum ServiceError {
     ServiceThreadError {
         details: String,
     },
+    ServiceInitializationError {
+        message: String,
+    },
+    ServiceLockError {
+        message: String,
+    },
+    ServiceValidationError {
+        message: String,
+    },
+    ServiceNotInitialized,
 }
 
 impl fmt::Display for ServiceError {
@@ -66,6 +76,16 @@ impl fmt::Display for ServiceError {
                 write!(f, "Thread synchronization error: {}", message)
             }
             Self::ServiceThreadError { details } => write!(f, "Thread error: {}", details),
+            Self::ServiceInitializationError { message } => {
+                write!(f, "Service initialization error: {}", message)
+            }
+            Self::ServiceLockError { message } => {
+                write!(f, "Service lock error: {}", message)
+            }
+            Self::ServiceValidationError { message } => {
+                write!(f, "Service validation error: {}", message)
+            }
+            Self::ServiceNotInitialized => write!(f, "Service not initialized"),
         }
     }
 }

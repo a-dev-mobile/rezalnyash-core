@@ -60,7 +60,7 @@ impl RunningTasks {
     ///
     /// # Examples
     /// ```
-    /// use rezalnyash_core::models::running_tasks::RunningTasks;
+    /// use rezalnyas_core::models::running_tasks::RunningTasks;
     ///
     /// let instance = RunningTasks::get_instance();
     /// let total_tasks = instance.get_nbr_total_tasks().unwrap_or(0);
