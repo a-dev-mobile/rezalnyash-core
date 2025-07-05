@@ -6,6 +6,7 @@
 use crate::enums::Status;
 use crate::models::{CalculationRequest, ClientInfo, TileDimensions};
 use crate::models::calculation_response::CalculationResponse;
+use crate::models::cut_list_thread::CutListThread;
 use crate::errors::{Result, TaskError};
 use crate::{log_error, log_warn};
 use serde::{Deserialize, Serialize};
@@ -97,25 +98,21 @@ pub struct Task {
     #[serde(skip)]
     pub thread_group_rankings: Arc<Mutex<HashMap<String, HashMap<String, i32>>>>,
     
-    /// Number of running threads (not serialized)
+    /// List of thread IDs associated with this task
     #[serde(skip)]
-    pub running_threads: i32,
+    pub thread_ids: Vec<String>,
     
-    /// Number of queued threads (not serialized)
+    /// Thread statuses by thread ID
     #[serde(skip)]
-    pub queued_threads: i32,
+    pub thread_statuses: HashMap<String, Status>,
     
-    /// Number of finished threads (not serialized)
+    /// Thread progress by thread ID
     #[serde(skip)]
-    pub finished_threads: i32,
+    pub thread_progress: HashMap<String, i32>,
     
-    /// Number of terminated threads (not serialized)
+    /// Thread materials by thread ID
     #[serde(skip)]
-    pub terminated_threads: i32,
-    
-    /// Number of error threads (not serialized)
-    #[serde(skip)]
-    pub error_threads: i32,
+    pub thread_materials: HashMap<String, String>,
 }
 
 impl Task {
@@ -159,14 +156,92 @@ impl Task {
             last_queried: now,
             no_material_tiles: Vec::new(),
             thread_group_rankings: Arc::new(Mutex::new(HashMap::new())),
-            running_threads: 0,
-            queued_threads: 0,
-            finished_threads: 0,
-            terminated_threads: 0,
-            error_threads: 0,
+          thread_ids: Vec::new(),
+            thread_statuses: HashMap::new(),
+            thread_progress: HashMap::new(),
+            thread_materials: HashMap::new(),
         }
     }
 
+    /// Adds a thread ID to this task
+    pub fn add_thread_id(&mut self, thread_id: String) {
+        self.thread_ids.push(thread_id.clone());
+        self.thread_statuses.insert(thread_id.clone(), Status::Queued);
+        self.thread_progress.insert(thread_id, 0);
+    }
+
+    /// Updates thread status
+    pub fn update_thread_status(&mut self, thread_id: &str, status: Status) {
+        self.thread_statuses.insert(thread_id.to_string(), status);
+    }
+
+    /// Updates thread progress
+    pub fn update_thread_progress(&mut self, thread_id: &str, progress: i32) {
+        self.thread_progress.insert(thread_id.to_string(), progress);
+    }
+
+    /// Sets thread material
+    pub fn set_thread_material(&mut self, thread_id: &str, material: String) {
+        self.thread_materials.insert(thread_id.to_string(), material);
+    }
+
+    /// Gets the number of running threads
+    pub fn get_nbr_running_threads(&self) -> i32 {
+        self.thread_statuses.values()
+            .filter(|&&status| status == Status::Running)
+            .count() as i32
+    }
+
+    /// Gets the number of queued threads
+    pub fn get_nbr_queued_threads(&self) -> i32 {
+        self.thread_statuses.values()
+            .filter(|&&status| status == Status::Queued)
+            .count() as i32
+    }
+
+    /// Gets the number of finished threads
+    pub fn get_nbr_finished_threads(&self) -> i32 {
+        self.thread_statuses.values()
+            .filter(|&&status| status == Status::Finished)
+            .count() as i32
+    }
+
+    /// Gets the number of finished threads for a specific material
+    pub fn get_nbr_finished_threads_for_material(&self, material: &str) -> i32 {
+        self.thread_statuses.iter()
+            .filter(|(thread_id, &status)| {
+                status == Status::Finished && 
+                self.thread_materials.get(*thread_id).map(|m| m == material).unwrap_or(false)
+            })
+            .count() as i32
+    }
+
+    /// Gets the number of terminated threads
+    pub fn get_nbr_terminated_threads(&self) -> i32 {
+        self.thread_statuses.values()
+            .filter(|&&status| status == Status::Terminated)
+            .count() as i32
+    }
+
+    /// Gets the number of error threads
+    pub fn get_nbr_error_threads(&self) -> i32 {
+        self.thread_statuses.values()
+            .filter(|&&status| status == Status::Error)
+            .count() as i32
+    }
+
+    /// Gets the maximum thread progress percentage
+    pub fn get_max_thread_progress_percentage(&self) -> i32 {
+        self.thread_progress.values()
+            .max()
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Gets the total number of threads
+    pub fn get_nbr_total_threads(&self) -> i32 {
+        self.thread_ids.len() as i32
+    }
     /// Checks if the task is currently running
     ///
     /// # Returns
@@ -378,61 +453,6 @@ impl Task {
                 material_rankings.insert(thread_group.to_string(), current + 1);
             }
         }
-    }
-
-    /// Gets the number of running threads
-    pub fn get_nbr_running_threads(&self) -> i32 {
-        self.running_threads
-    }
-
-    /// Gets the number of queued threads
-    pub fn get_nbr_queued_threads(&self) -> i32 {
-        self.queued_threads
-    }
-
-    /// Gets the number of finished threads
-    pub fn get_nbr_finished_threads(&self) -> i32 {
-        self.finished_threads
-    }
-
-    /// Gets the number of finished threads for a specific material
-    ///
-    /// # Arguments
-    /// * `_material` - The material name (placeholder for future implementation)
-    ///
-    /// # Returns
-    /// Number of finished threads for the material
-    pub fn get_nbr_finished_threads_for_material(&self, _material: &str) -> i32 {
-        // This would require tracking threads per material in a real implementation
-        self.get_nbr_finished_threads()
-    }
-
-    /// Gets the number of terminated threads
-    pub fn get_nbr_terminated_threads(&self) -> i32 {
-        self.terminated_threads
-    }
-
-    /// Gets the number of error threads
-    pub fn get_nbr_error_threads(&self) -> i32 {
-        self.error_threads
-    }
-
-    /// Gets the maximum thread progress percentage
-    ///
-    /// # Returns
-    /// Maximum progress percentage across all threads
-    pub fn get_max_thread_progress_percentage(&self) -> i32 {
-        // This would require tracking individual thread progress in a real implementation
-        self.get_percentage_done()
-    }
-
-    /// Gets the total number of threads
-    pub fn get_nbr_total_threads(&self) -> i32 {
-        self.get_nbr_running_threads() + 
-        self.get_nbr_queued_threads() + 
-        self.get_nbr_finished_threads() + 
-        self.get_nbr_terminated_threads() + 
-        self.get_nbr_error_threads()
     }
 
     /// Checks if the task has a valid solution

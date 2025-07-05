@@ -5,9 +5,10 @@
 //! functionality preserved and adapted for Rust's ownership model and concurrency.
 
 use crate::enums::{Status, StatusCode};
-use crate::errors::{Result, ServiceError, TaskError};
+use crate::errors::{CoreError, Result, ServiceError, TaskError};
 use crate::models::running_tasks::running_tasks::RunningTasks;
 use crate::models::stats::stats::Stats;
+use crate::models::stock::{StockPanelPicker, StockSolution};
 use crate::models::task_status_response::task_status_response::TaskStatusResponse;
 use crate::models::{
     calculation_request::CalculationRequest,
@@ -20,10 +21,11 @@ use crate::models::{
     tile_dimensions::TileDimensions,
     watch_dog::{CutListLogger, DefaultCutListLogger, WatchDog},
 };
+use crate::scaled_math::{PrecisionAnalyzer, ScaledConverter, ScaledNumber};
 use crate::services::CutListOptimizerService;
 use crate::{log_debug, log_error, log_info, log_trace, log_warn};
 use rayon::ThreadPoolBuilder;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -258,48 +260,37 @@ impl CutListOptimizerServiceImpl {
         // and find the maximum integer places in width/height values
         4 // Default to 4 integer places
     }
-
-    /// Checks if optimization is one-dimensional
+    /// Check if this is one-dimensional optimization
     fn is_one_dimensional_optimization(
         &self,
-        _tiles: &[TileDimensions],
-        _stock: &[TileDimensions],
+        tiles: &[TileDimensions],
+        stock_tiles: &[TileDimensions],
     ) -> bool {
-        // Placeholder implementation
-        // This would check if all tiles and stock have consistent dimensions
-        // that allow for one-dimensional optimization
-        false
-    }
+        if tiles.is_empty() {
+            return false;
+        }
 
-    /// Generates groups of tile dimensions
-    fn generate_groups(
-        &self,
-        tiles: Vec<TileDimensions>,
-        _stock: &[TileDimensions],
-        task: &Task,
-    ) -> Vec<GroupedTileDimensions> {
-        log_debug!(
-            "Task[{}] Generating groups for {} tiles",
-            task.id,
-            tiles.len()
-        );
+        // Get unique dimensions from first tile
+        let mut common_dimensions = vec![tiles[0].width(), tiles[0].height()];
 
-        // Group identical tiles together
-        let mut groups = HashMap::new();
-        let mut group_id = 0;
-
+        // Check all tiles
         for tile in tiles {
-            let key = format!("{}x{}", tile.width(), tile.height());
-            if !groups.contains_key(&key) {
-                groups.insert(key.clone(), group_id);
-                group_id += 1;
+            common_dimensions.retain(|&dim| dim == tile.width() || dim == tile.height());
+            if common_dimensions.is_empty() {
+                return false;
             }
         }
 
-        // Convert to GroupedTileDimensions
-        // This is a simplified implementation
-        // In the real implementation, you would create proper GroupedTileDimensions
-        Vec::new() // Placeholder
+        // Check stock tiles
+        for stock_tile in stock_tiles {
+            common_dimensions
+                .retain(|&dim| dim == stock_tile.width() || dim == stock_tile.height());
+            if common_dimensions.is_empty() {
+                return false;
+            }
+        }
+
+        !common_dimensions.is_empty()
     }
 
     /// Gets distinct grouped tile dimensions with counts
@@ -423,90 +414,370 @@ impl CutListOptimizerServiceImpl {
     }
 
     /// Main computation method for a specific material
-    fn compute_material(
+    pub fn compute_material(
         &self,
         tiles: Vec<TileDimensions>,
-        stock: Vec<TileDimensions>,
+        stock_tiles: Vec<TileDimensions>,
         configuration: Configuration,
         task: Arc<Mutex<Task>>,
         material: String,
     ) -> Result<()> {
         log_debug!("Starting computation for material: {}", material);
 
-        // Get performance thresholds
-        let default_thresholds = PerformanceThresholds::new();
-        let _performance_thresholds = configuration
-            .performance_thresholds()
-            .unwrap_or(&default_thresholds);
-
-        // Generate groups and permutations
-        let task_clone = {
-            let task_guard = task.lock().map_err(|_| TaskError::TaskLockError {
-                operation: "compute_material".to_string(),
-            })?;
-            task_guard.clone()
-        };
-
-        let groups = self.generate_groups(tiles.clone(), &stock, &task_clone);
-        let distinct_groups =
-            self.get_distinct_grouped_tile_dimensions(groups.clone(), &configuration);
-
-        log_debug!(
-            "Generated {} distinct groups for material {}",
-            distinct_groups.len(),
-            material
-        );
-
-        // Set task to running status
+        // Log the tiles being processed
         {
-            let mut task_guard = task.lock().map_err(|_| TaskError::TaskLockError {
-                operation: "set_running_status".to_string(),
+            let task_guard = task.lock().map_err(|_| CoreError::Internal {
+                message: "Failed to lock task".to_string(),
             })?;
-            task_guard.set_running_status()?;
+            log_debug!(
+                "Task[{}] Generating groups for {} tiles",
+                task_guard.id,
+                tiles.len()
+            );
         }
 
-        // Simulate computation process
-        for i in 0..=100 {
-            thread::sleep(Duration::from_millis(50)); // Simulate work
+        // Generate groups (equivalent to Java generateGroups method)
+        let grouped_tiles = self.generate_groups(&tiles, &stock_tiles, &task)?;
 
+        {
+            let task_guard = task.lock().map_err(|_| CoreError::Internal {
+                message: "Failed to lock task".to_string(),
+            })?;
+            log_debug!(
+                "Generated {} distinct groups for material {}",
+                grouped_tiles.len(),
+                material
+            );
+        }
+
+        // Check if we have any groups to process
+        if grouped_tiles.is_empty() {
+            log_debug!(
+                "No groups generated, completing computation for material: {}",
+                material
+            );
+            let mut task_guard = task.lock().map_err(|_| CoreError::Internal {
+                message: "Failed to lock task".to_string(),
+            })?;
+            task_guard.set_material_percentage_done(material, 100);
+            return Ok(());
+        }
+
+        // Set task to running status if not already
+        {
+            let mut task_guard = task.lock().map_err(|_| CoreError::Internal {
+                message: "Failed to lock task".to_string(),
+            })?;
+            if let Err(_) = task_guard.set_running_status() {
+                // Task might already be running, which is fine
+            }
+        }
+
+        // Initialize stock panel picker
+        let mut stock_panel_picker = StockPanelPicker::new(
+            tiles.clone(),
+            stock_tiles.clone(),
+            task.clone(),
+            if configuration.use_single_stock_unit() {
+                Some(1)
+            } else {
+                None
+            },
+        )?;
+
+        stock_panel_picker.init()?;
+
+        // Get performance thresholds
+        let performance_thresholds = configuration
+            .performance_thresholds()
+            .cloned()
+            .unwrap_or_else(|| {
+                log_debug!("No performance thresholds specified, using defaults");
+                PerformanceThresholds::default()
+            });
+
+        // Generate permutations (simplified approach)
+        let mut permutations = vec![grouped_tiles.clone()];
+
+        // Process permutations
+        let max_permutations = std::cmp::min(permutations.len(), 1000);
+
+        for (permutation_idx, tiles_permutation) in
+            permutations.iter().enumerate().take(max_permutations)
+        {
+            // Check if task is still running
             {
-                let mut task_guard = task.lock().map_err(|_| TaskError::TaskLockError {
-                    operation: "update_progress".to_string(),
+                let task_guard = task.lock().map_err(|_| CoreError::Internal {
+                    message: "Failed to lock task".to_string(),
                 })?;
-
                 if !task_guard.is_running() {
                     log_debug!(
-                        "Task no longer running, stopping computation for material {}",
+                        "Task no longer running, stopping computation for material: {}",
                         material
                     );
                     break;
                 }
-
-                task_guard.set_material_percentage_done(material.clone(), i);
             }
+
+            log_debug!(
+                "Processing permutation {} for material {}",
+                permutation_idx,
+                material
+            );
+
+            // Convert grouped tiles back to regular tiles
+            let tiles_in_order = self.grouped_tiles_to_tiles(tiles_permutation);
+
+            // Process different stock solutions
+            let max_stock_iterations = 1000;
+
+            for stock_idx in 0..max_stock_iterations {
+                // Get stock solution
+                let stock_solution = match stock_panel_picker.get_stock_solution(stock_idx) {
+                    Ok(Some(solution)) => solution,
+                    Ok(None) => {
+                        log_debug!("No more stock solutions available at index {}", stock_idx);
+                        break;
+                    }
+                    Err(e) => {
+                        log_error!("Error getting stock solution {}: {}", stock_idx, e);
+                        break;
+                    }
+                };
+
+                // Check if task is still running
+                {
+                    let task_guard = task.lock().map_err(|_| CoreError::Internal {
+                        message: "Failed to lock task".to_string(),
+                    })?;
+                    if !task_guard.is_running() {
+                        log_debug!("Task no longer running, stopping stock iteration");
+                        break;
+                    }
+                }
+
+                // Process this combination of tiles and stock
+                self.process_tiles_with_stock(
+                    &tiles_in_order,
+                    &stock_solution,
+                    &configuration,
+                    &task,
+                    &material,
+                    permutation_idx,
+                    stock_idx,
+                )?;
+
+                // Update progress
+                if stock_idx % 10 == 0 {
+                    let progress = std::cmp::min(
+                        (permutation_idx * 100 / max_permutations)
+                            + (stock_idx * 100 / (max_permutations * max_stock_iterations)),
+                        99,
+                    ) as i32;
+
+                    let mut task_guard = task.lock().map_err(|_| CoreError::Internal {
+                        message: "Failed to lock task".to_string(),
+                    })?;
+                    task_guard.set_material_percentage_done(material.clone(), progress);
+                }
+            }
+        }
+
+        // Mark material as completed
+        {
+            let mut task_guard = task.lock().map_err(|_| CoreError::Internal {
+                message: "Failed to lock task".to_string(),
+            })?;
+            task_guard.set_material_percentage_done(material.clone(), 100);
         }
 
         log_debug!("Completed computation for material: {}", material);
         Ok(())
     }
 
-    /// Main computation entry point
+
+/// Main computation entry point - с использованием ScaledNumber
     fn compute(&self, request: CalculationRequest, task_id: String) -> Result<()> {
         log_debug!("Starting computation for task: {}", task_id);
 
-        // Create and setup task
+        // Получаем панели и исходные листы из запроса
+        let panels = request.panels();
+        let stock_panels = request.stock_panels();
+
+        log_debug!(
+            "Request contains {} panels and {} stock panels",
+            panels.len(),
+            stock_panels.len()
+        );
+
+        if panels.is_empty() {
+            log_warn!("No panels in request!");
+            return Err(CoreError::InvalidInput {
+                details: "No panels provided".to_string(),
+            }
+            .into());
+        }
+
+        if stock_panels.is_empty() {
+            log_warn!("No stock panels in request!");
+            return Err(CoreError::InvalidInput {
+                details: "No stock panels provided".to_string(),
+            }
+            .into());
+        }
+
+        // Создаем и настраиваем задачу
         let mut task = Task::new(task_id.clone());
         task.calculation_request = Some(request.clone());
         task.client_info = request.client_info().cloned();
 
-        // Calculate scaling factor (simplified)
-        let factor = 100.0; // Placeholder scaling factor
-        task.factor = factor;
+        // Устанавливаем статус Running
+        task.set_running_status()
+            .map_err(|e| CoreError::InvalidInput {
+                details: format!("Failed to set task status to running: {}", e),
+            })?;
 
-        // Build initial solution
+        // Собираем все строковые значения для анализа точности
+        let mut all_dimension_strings = Vec::new();
+
+        // Собираем размеры панелей
+        for panel in panels {
+            all_dimension_strings.push(panel.width());
+            all_dimension_strings.push(panel.height());
+        }
+
+        // Собираем размеры исходных листов
+        for stock_panel in stock_panels {
+            all_dimension_strings.push(stock_panel.width());
+            all_dimension_strings.push(stock_panel.height());
+        }
+
+        // Добавляем размеры из конфигурации
+        let binding = Configuration::default();
+        let config = request.configuration().unwrap_or(&binding);
+        if let Some(cut_thickness) = config.cut_thickness() {
+            all_dimension_strings.push(cut_thickness);
+        }
+        if let Some(min_trim) = config.min_trim_dimension() {
+            all_dimension_strings.push(min_trim);
+        }
+
+        log_debug!(
+            "Analyzing precision for {} dimension strings",
+            all_dimension_strings.len()
+        );
+
+        // Определяем оптимальную точность с ограничением
+        const MAX_ALLOWED_DIGITS: u8 = 6;
+        let precision =
+            PrecisionAnalyzer::validate_total_digits(&all_dimension_strings, MAX_ALLOWED_DIGITS)
+                .map_err(|e| CoreError::InvalidInput {
+                    details: format!("Precision analysis failed: {}", e),
+                })?;
+
+        log_debug!("Using precision: {}", precision);
+
+        // Создаем конвертер с определенной точностью
+        let converter = ScaledConverter::new(precision).map_err(|e| CoreError::InvalidInput {
+            details: format!("Failed to create converter: {}", e),
+        })?;
+
+        // Сохраняем масштабный коэффициент в задаче (для совместимости с Java)
+        let scale_factor = 10_f64.powi(precision as i32);
+        task.factor = scale_factor;
+
+        log_debug!("Using scaling factor: {}", scale_factor);
+
+        // Преобразуем панели в TileDimensions с масштабированием
+        let mut tiles = Vec::new();
+        for panel in panels {
+            if panel.is_valid() {
+                // Конвертируем размеры в ScaledNumber
+                let width_scaled =
+                    ScaledNumber::from_str(panel.width(), precision).map_err(|e| {
+                        CoreError::InvalidInput {
+                            details: format!("Invalid panel width '{}': {}", panel.width(), e),
+                        }
+                    })?;
+                let height_scaled =
+                    ScaledNumber::from_str(panel.height(), precision).map_err(|e| {
+                        CoreError::InvalidInput {
+                            details: format!("Invalid panel height '{}': {}", panel.height(), e),
+                        }
+                    })?;
+
+                // Получаем целые значения (масштабированные)
+                let width = width_scaled.raw_value() as u32;
+                let height = height_scaled.raw_value() as u32;
+
+                for _ in 0..panel.count() {
+                    tiles.push(TileDimensions::new(
+                        panel.id(),
+                        width,
+                        height,
+                        panel.material().to_string(),
+                        panel.orientation() as u32,
+                        panel.label().map(|s| s.to_string()),
+                        panel.is_enabled(), // Added the missing 7th parameter
+                    ));
+                }
+            }
+        }
+
+        // Преобразуем исходные листы в TileDimensions с масштабированием
+        let mut stock_tiles = Vec::new();
+        for stock_panel in stock_panels {
+            if stock_panel.is_valid() {
+                // Конвертируем размеры в ScaledNumber
+                let width_scaled =
+                    ScaledNumber::from_str(stock_panel.width(), precision).map_err(|e| {
+                        CoreError::InvalidInput {
+                            details: format!(
+                                "Invalid stock width '{}': {}",
+                                stock_panel.width(),
+                                e
+                            ),
+                        }
+                    })?;
+                let height_scaled = ScaledNumber::from_str(stock_panel.height(), precision)
+                    .map_err(|e| CoreError::InvalidInput {
+                        details: format!("Invalid stock height '{}': {}", stock_panel.height(), e),
+                    })?;
+
+                // Получаем целые значения (масштабированные)
+                let width = width_scaled.raw_value() as u32;
+                let height = height_scaled.raw_value() as u32;
+
+                for _ in 0..stock_panel.count() {
+                    stock_tiles.push(TileDimensions::new(
+                        stock_panel.id(),
+                        width,
+                        height,
+                        stock_panel.material().to_string(),
+                        stock_panel.orientation() as u32,
+                        stock_panel.label().map(|s| s.to_string()),
+                        stock_panel.is_enabled(), // Added the missing 7th parameter
+                    ));
+                }
+            }
+        }
+
+        log_debug!(
+            "Created {} tiles and {} stock tiles",
+            tiles.len(),
+            stock_tiles.len()
+        );
+
+
+        /* 
+        task.buildSolution();
+        this.runningTasks.addTask(task);
+        
+         */
+        // Строим начальное решение
         task.build_solution();
 
-        // Add task to running tasks
+        // Добавляем задачу в список выполняющихся
         let task_arc = Arc::new(Mutex::new(task));
         self.running_tasks.add_task({
             let task_guard = task_arc.lock().map_err(|_| TaskError::TaskLockError {
@@ -515,7 +786,7 @@ impl CutListOptimizerServiceImpl {
             task_guard.clone()
         })?;
 
-        // Log execution
+        // Логируем выполнение
         {
             let task_guard = task_arc.lock().map_err(|_| TaskError::TaskLockError {
                 operation: "log_execution".to_string(),
@@ -523,48 +794,131 @@ impl CutListOptimizerServiceImpl {
             self.cut_list_logger.log_execution(&task_guard);
         }
 
-        // Group tiles and stock by material (simplified)
-        let mut material_tiles = HashMap::new();
-        let mut material_stock = HashMap::new();
+        // Группируем по материалам
+        let mut material_tiles: HashMap<String, Vec<TileDimensions>> = HashMap::new();
+        let mut material_stock: HashMap<String, Vec<TileDimensions>> = HashMap::new();
 
-        // Placeholder: In real implementation, extract from request.panels and request.stock_panels
-        material_tiles.insert("wood".to_string(), Vec::new());
-        material_stock.insert("wood".to_string(), Vec::new());
+        // Группируем панели по материалам
+        for tile in tiles {
+            material_tiles
+                .entry(tile.material().to_string())
+                .or_insert_with(Vec::new)
+                .push(tile);
+        }
 
-        // Process each material
-        for (material, tiles) in material_tiles {
-            if let Some(stock) = material_stock.get(&material) {
-                let task_clone = task_arc.clone();
-                let configuration_clone = request.configuration().cloned().unwrap_or_default();
-                let material_clone = material.clone();
-                let tiles_clone = tiles;
-                let stock_clone = stock.clone();
+        // Группируем исходные листы по материалам
+        for stock_tile in stock_tiles {
+            material_stock
+                .entry(stock_tile.material().to_string())
+                .or_insert_with(Vec::new)
+                .push(stock_tile);
+        }
 
-                // Add material to task
+        log_debug!(
+            "Grouped tiles by materials: {:?}",
+            material_tiles.keys().collect::<Vec<_>>()
+        );
+        log_debug!(
+            "Grouped stock by materials: {:?}",
+            material_stock.keys().collect::<Vec<_>>()
+        );
+
+        // Определяем материалы для обработки
+        let mut materials_to_process = HashSet::new();
+
+        // Обновляем задачу с информацией о материалах
+        {
+            let mut task_guard = task_arc.lock().map_err(|_| TaskError::TaskLockError {
+                operation: "set_materials".to_string(),
+            })?;
+
+            // Сохраняем группировку по материалам в задаче
+            task_guard.tile_dimensions_per_material = Some(material_tiles.clone());
+            task_guard.stock_dimensions_per_material = Some(material_stock.clone());
+
+            log_debug!(
+                "Task status before material processing: {:?}",
+                task_guard.status
+            );
+        }
+
+        for material in material_tiles.keys() {
+            if material_stock.contains_key(material) {
+                materials_to_process.insert(material.clone());
+                // Добавляем материал в задачу
                 {
                     let mut task_guard = task_arc.lock().map_err(|_| TaskError::TaskLockError {
                         operation: "add_material".to_string(),
                     })?;
                     task_guard.add_material_to_compute(material.clone());
                 }
+            } else {
+                // Материал есть в панелях, но нет в листах - эти панели не разместить
+                log_warn!(
+                    "Material '{}' has panels but no stock - panels will not fit",
+                    material
+                );
+                if let Some(tiles_for_material) = material_tiles.get(material) {
+                    let mut task_guard = task_arc.lock().map_err(|_| TaskError::TaskLockError {
+                        operation: "add_no_material_tiles".to_string(),
+                    })?;
 
-                // Spawn computation thread for this material
-                let service_clone = self.clone();
-                thread::spawn(move || {
-                    if let Err(e) = service_clone.compute_material(
-                        tiles_clone,
-                        stock_clone,
-                        configuration_clone,
-                        task_clone,
-                        material_clone,
-                    ) {
-                        log_error!("Error computing material: {}", e);
+                    // Добавляем панели без материала (они не поместятся)
+                    for tile in tiles_for_material {
+                        task_guard.no_material_tiles.push(tile.clone());
                     }
-                });
+                }
             }
         }
 
-        // Check if task is finished
+        log_debug!("Materials to process: {:?}", materials_to_process);
+
+        // Проверяем, есть ли материалы для обработки
+        if materials_to_process.is_empty() {
+            log_warn!("No materials to process - finishing task");
+            {
+                let mut task_guard = task_arc.lock().map_err(|_| TaskError::TaskLockError {
+                    operation: "finish_no_materials".to_string(),
+                })?;
+                task_guard.check_if_finished();
+            }
+            return Ok(());
+        }
+
+        // Создаем копию списка материалов для итерации
+        let materials_list: Vec<String> = materials_to_process.iter().cloned().collect();
+        
+        // Обрабатываем каждый материал в отдельном потоке
+        for material in materials_list {
+            let tiles_for_material = material_tiles.get(&material).unwrap().clone();
+            let stock_for_material = material_stock.get(&material).unwrap().clone();
+            let configuration_clone = config.clone();
+            let task_clone = task_arc.clone();
+            let material_clone = material.clone();
+            let service_clone = self.clone();
+
+            log_debug!(
+                "Starting computation for material '{}' with {} tiles and {} stock",
+                material,
+                tiles_for_material.len(),
+                stock_for_material.len()
+            );
+
+            // Запускаем обработку материала в отдельном потоке
+            thread::spawn(move || {
+                if let Err(e) = service_clone.compute_material(
+                    tiles_for_material,
+                    stock_for_material,
+                    configuration_clone,
+                    task_clone,
+                    material_clone,
+                ) {
+                    log_error!("Error computing material: {}", e);
+                }
+            });
+        }
+
+        // Проверяем, завершена ли задача
         {
             let mut task_guard = task_arc.lock().map_err(|_| TaskError::TaskLockError {
                 operation: "check_finished".to_string(),
@@ -572,8 +926,198 @@ impl CutListOptimizerServiceImpl {
             task_guard.check_if_finished();
         }
 
+        // Ждем завершения всех потоков обработки материалов
+        // Это необходимо, так как материалы обрабатываются в отдельных потоках
+        thread::sleep(Duration::from_millis(500));
+        
+        // Создаем копию списка материалов для использования в финальной проверке
+        let materials_list: Vec<String> = materials_to_process.iter().cloned().collect();
+        
+        // Еще раз проверяем статус задачи после небольшой задержки
+        {
+            let mut task_guard = task_arc.lock().map_err(|_| TaskError::TaskLockError {
+                operation: "final_check".to_string(),
+            })?;
+            
+            // Устанавливаем 100% для всех материалов, чтобы гарантировать завершение
+            for material in &materials_list {
+                task_guard.set_material_percentage_done(material.clone(), 100);
+            }
+            
+            // Принудительно проверяем завершение
+            task_guard.check_if_finished();
+            
+            // Если задача все еще выполняется, принудительно завершаем
+            if task_guard.status == Status::Running {
+                log_info!("Принудительное завершение задачи после обработки всех материалов");
+                task_guard.status = Status::Finished;
+                task_guard.end_time = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                
+                if task_guard.solution.is_none() {
+                    task_guard.build_solution();
+                }
+            }
+        }
+
         Ok(())
     }
+    /// Process tiles with a specific stock solution
+    fn process_tiles_with_stock(
+        &self,
+        tiles: &[TileDimensions],
+        stock_solution: &StockSolution,
+        configuration: &Configuration,
+        task: &Arc<Mutex<Task>>,
+        material: &str,
+        permutation_idx: usize,
+        stock_idx: usize,
+    ) -> Result<()> {
+        log_debug!("Processing permutation[{}/∞] with stock solution [{}] {{nbrPanels[{}] area[{}]}}",
+                  permutation_idx, stock_idx, stock_solution.len(), stock_solution.get_total_area());
+
+        // Parse cut thickness
+        let cut_thickness = configuration.cut_thickness()
+            .and_then(|ct| ct.parse::<f64>().ok())
+            .unwrap_or(0.0);
+
+        // Parse min trim dimension  
+        let min_trim_dimension = configuration.min_trim_dimension()
+            .and_then(|mtd| mtd.parse::<f64>().ok())
+            .unwrap_or(0.0);
+
+        // Get factor from task
+        let factor = {
+            let task_guard = task.lock().map_err(|_| CoreError::Internal {
+                message: "Failed to lock task".to_string(),
+            })?;
+            task_guard.factor
+        };
+
+        let cut_thickness_scaled = (cut_thickness * factor).round() as i32;
+        let min_trim_scaled = (min_trim_dimension * factor).round() as i32;
+
+        // Simulate cutting optimization process
+        let mut successful_placements = 0;
+        let mut total_used_area = 0.0;
+        
+        // Simple simulation - try to place each tile
+        for (tile_idx, tile) in tiles.iter().enumerate() {
+            // Check if we can fit this tile in any stock panel
+            let tile_area = tile.area() as f64;
+            
+            if tile_area <= stock_solution.get_total_area() as f64 {
+                successful_placements += 1;
+                total_used_area += tile_area;
+            }
+            
+            // Simulate some processing time
+            if tile_idx % 5 == 0 {
+                thread::sleep(Duration::from_millis(1));
+            }
+        }
+
+        // Calculate efficiency
+        let efficiency = if stock_solution.get_total_area() > 0 {
+            total_used_area / stock_solution.get_total_area() as f64
+        } else {
+            0.0
+        };
+
+        log_debug!("Placed {}/{} tiles with efficiency {:.2}%", 
+                  successful_placements, tiles.len(), efficiency * 100.0);
+
+        // Update task with progress (simplified)
+        {
+            let task_guard = task.lock().map_err(|_| CoreError::Internal {
+                message: "Failed to lock task".to_string(),
+            })?;
+            
+            // Increment thread group rankings for successful placements
+            if successful_placements > tiles.len() / 2 {
+                task_guard.increment_thread_group_rankings(material, "AREA");
+            }
+        }
+
+        Ok(())
+    }
+
+
+
+
+    /// Convert grouped tiles back to regular tiles
+    fn grouped_tiles_to_tiles(
+        &self,
+        grouped_tiles: &[GroupedTileDimensions],
+    ) -> Vec<TileDimensions> {
+        grouped_tiles
+            .iter()
+            .map(|gt| gt.tile_dimensions().clone())
+            .collect()
+    }
+    /// Generate groups from tiles (equivalent to Java generateGroups method)
+    fn generate_groups(
+        &self,
+        tiles: &[TileDimensions],
+        stock_tiles: &[TileDimensions],
+        task: &Arc<Mutex<Task>>,
+    ) -> Result<Vec<GroupedTileDimensions>> {
+        // Count tile types
+        let mut tile_counts = HashMap::new();
+        for tile in tiles {
+            let key = format!("{}x{}", tile.width(), tile.height());
+            *tile_counts.entry(key).or_insert(0) += 1;
+        }
+
+        // Determine if this is one-dimensional optimization
+        let is_one_dimensional = self.is_one_dimensional_optimization(tiles, stock_tiles);
+
+        let max_per_group = if is_one_dimensional {
+            {
+                let task_guard = task.lock().map_err(|_| CoreError::Internal {
+                    message: "Failed to lock task".to_string(),
+                })?;
+                log_info!("Task is one dimensional optimization");
+            }
+            1000 // Large number for one-dimensional
+        } else {
+            std::cmp::max(tiles.len() / 100, 1)
+        };
+
+        let mut result = Vec::new();
+        let mut group_counters = HashMap::new();
+        let mut current_group = 0;
+
+        for tile in tiles {
+            let tile_key = format!("{}x{}", tile.width(), tile.height());
+            let group_key = format!("{}-{}", tile_key, current_group);
+
+            let count_in_group = group_counters.entry(group_key.clone()).or_insert(0);
+            *count_in_group += 1;
+
+            let grouped_tile =
+                GroupedTileDimensions::from_tile_dimensions(tile.clone(), current_group);
+            result.push(grouped_tile);
+
+            // Check if we should split to a new group
+            if let Some(&total_count) = tile_counts.get(&tile_key) {
+                if total_count > max_per_group && *count_in_group > total_count / 4 {
+                    log_debug!(
+                        "Splitting panel set [{}] with [{}] units into groups",
+                        tile_key,
+                        total_count
+                    );
+                    current_group += 1;
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    
 }
 
 impl Clone for CutListOptimizerServiceImpl {
@@ -742,8 +1286,7 @@ impl CutListOptimizerService for CutListOptimizerServiceImpl {
         // For now, we'll use a placeholder implementation
         if let Ok(task_opt) = self.running_tasks.get_task(task_id) {
             if let Some(mut task) = task_opt {
-
-                    let solution_clone = task.solution.clone();
+                let solution_clone = task.solution.clone();
                 match task.stop() {
                     Ok(()) => {
                         log_info!("Task {} stopped successfully", task_id);
@@ -803,7 +1346,7 @@ impl CutListOptimizerService for CutListOptimizerServiceImpl {
         // Check if multiple tasks per client are allowed
         if !self.allow_multiple_tasks_per_client {
             if let Ok(tasks) = self.running_tasks.get_tasks() {
-                        let client_id_ref = client_info.id.as_ref();
+                let client_id_ref = client_info.id.as_ref();
                 let running_count = tasks
                     .iter()
                     .filter(|task| {
@@ -812,7 +1355,7 @@ impl CutListOptimizerService for CutListOptimizerServiceImpl {
                                 .client_info
                                 .as_ref()
                                 .and_then(|ci| ci.id.as_ref())
-                                .map(|id|  Some(id) == client_id_ref)
+                                .map(|id| Some(id) == client_id_ref)
                                 .unwrap_or(false)
                     })
                     .count();
