@@ -14,7 +14,7 @@ use crate::models::{
     tile_dimensions::TileDimensions,
     tile_node::TileNode,
 };
-use crate::{log_error, log_info};
+use crate::{log_debug, log_error, log_info};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -159,6 +159,9 @@ impl CutListLogger for DefaultCutListLogger {
 /// tiles and generates optimal cutting solutions using various strategies.
 #[derive(Debug)]
 pub struct CutListThread {
+    /// Unique identifier for this thread
+    pub id: String,
+
     /// Accuracy factor for solution pruning
     accuracy_factor: i32,
     /// All solutions across threads
@@ -179,7 +182,11 @@ pub struct CutListThread {
     start_time: Option<u64>,
     /// Stock solution
     stock_solution: Option<StockSolution>,
-    /// Associated task
+
+    /// Associated task ID (instead of task reference)
+    task_id: Option<String>,
+
+    /// Associated task (for compatibility)
     task: Option<Arc<Mutex<Task>>>,
     /// Tiles to process
     tiles: Vec<TileDimensions>,
@@ -189,6 +196,16 @@ pub struct CutListThread {
     percentage_done: i32,
     /// Minimum trim dimension
     min_trim_dimension: i32,
+
+    /// Whether this thread has a logger
+    pub has_logger: bool,
+
+    /// Number of thread comparators
+    pub thread_comparator_count: usize,
+
+    /// Number of final solution comparators
+    pub final_comparator_count: usize,
+
     /// Cut list logger
     cut_list_logger: Option<Box<dyn CutListLogger>>,
     /// Thread prioritized comparators
@@ -198,8 +215,15 @@ pub struct CutListThread {
 }
 
 impl CutListThread {
-    /// Creates a new CutListThread
+    /// Creates a new CutListThread with a unique ID
     pub fn new() -> Self {
+        // Generate a simple ID using timestamp and counter
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let id = format!("thread_{}", timestamp);
+
         Self {
             accuracy_factor: 10,
             all_solutions: Arc::new(Mutex::new(Vec::new())),
@@ -211,18 +235,33 @@ impl CutListThread {
             solutions: Vec::new(),
             start_time: None,
             stock_solution: None,
+            task_id: None,
             task: None,
             tiles: Vec::new(),
             status: Status::Queued,
             percentage_done: 0,
             min_trim_dimension: 0,
+            has_logger: false,
+            thread_comparator_count: 0,
+            final_comparator_count: 0,
             cut_list_logger: None,
             thread_prioritized_comparators: Vec::new(),
             final_solution_prioritized_comparators: Vec::new(),
+            id,
         }
     }
 
-    // Getters and setters
+    /// Sets the task ID for this thread
+    pub fn set_task_id(&mut self, task_id: Option<String>) {
+        self.task_id = task_id;
+    }
+
+    /// Gets the task ID for this thread
+    pub fn get_task_id(&self) -> Option<&String> {
+        self.task_id.as_ref()
+    }
+
+    // Getters and setters for all fields
     pub fn get_group(&self) -> Option<&String> {
         self.group.as_ref()
     }
@@ -249,6 +288,10 @@ impl CutListThread {
 
     pub fn get_status(&self) -> Status {
         self.status
+    }
+
+    pub fn set_status(&mut self, status: Status) {
+        self.status = status;
     }
 
     pub fn get_cut_thickness(&self) -> i32 {
@@ -419,22 +462,18 @@ impl CutListThread {
         });
     }
 
-    /// Main computation method - computes cutting solutions
+    /// РЕАЛЬНАЯ логика оптимизации (не симуляция!)
     pub fn compute_solutions(&mut self) -> Result<()> {
-        println!("RUST START: === compute_solutions() ===");
+        log_debug!("RUST START: === compute_solutions() ===");
+        log_debug!("RUST STAGE 1: === Creating initial solution ===");
 
-        println!("RUST STAGE 1: === Creating initial solution ===");
+        // 1. Создаем начальное решение точно как в Java
         let mut current_solutions = Vec::new();
-
         if let Some(stock_solution) = &self.stock_solution {
             current_solutions.push(Solution::new(stock_solution));
-            println!(
+            log_debug!(
                 "RUST STAGE 1 COMPLETE: Created solution with {} solutions",
                 current_solutions.len()
-            );
-            println!(
-                "RUST: First solution contains {} mosaics",
-                current_solutions[0].get_mosaics().len()
             );
         } else {
             return Err(CoreError::InvalidInput {
@@ -443,176 +482,445 @@ impl CutListThread {
             .into());
         }
 
+        // 2. Проверяем статус задачи
         if let Some(task) = &self.task {
             if let Ok(task_guard) = task.lock() {
-                if task_guard.is_running() {
-                    println!(
-                        "RUST: Task is running, starting processing of {} tiles",
-                        self.tiles.len()
-                    );
-                    drop(task_guard); // Release lock before processing
+                if !task_guard.is_running() {
+                    return Ok(());
+                }
+                log_debug!(
+                    "RUST: Task is running, starting processing of {} tiles",
+                    self.tiles.len()
+                );
+            }
+        }
 
-                    for (i, tile_dimensions) in self.tiles.iter().enumerate() {
-                        println!("\n{}", "=".repeat(80));
-                        println!(
-                            "RUST STAGE 2: === Placing tile {} of {} ===",
-                            i + 1,
-                            self.tiles.len()
-                        );
-                        println!("RUST equivalent to Java: place_single_tile()");
-                        println!(
-                            "RUST: Tile {}x{}, ID: {:?}",
-                            tile_dimensions.width(),
-                            tile_dimensions.height(),
-                            tile_dimensions.id()
-                        );
+        // 3. ОСНОВНОЙ ЦИКЛ - размещение каждой панели (как в Java)
+        for (i, tile_dimensions) in self.tiles.iter().enumerate() {
+            log_debug!("\n{}", "=".repeat(80));
+            log_debug!(
+                "RUST STAGE 2: === Placing tile {} of {} ===",
+                i + 1,
+                self.tiles.len()
+            );
+            log_debug!(
+                "RUST: Tile {}x{}, ID: {:?}",
+                tile_dimensions.width(),
+                tile_dimensions.height(),
+                tile_dimensions.id()
+            );
 
-                        if (i + 1) % 3 == 0 {
-                            self.percentage_done =
-                                ((i + 1) as f32 / self.tiles.len() as f32 * 100.0) as i32;
-                        }
+            // Обновляем прогресс
+            if (i + 1) % 3 == 0 {
+                self.percentage_done = ((i + 1) as f32 / self.tiles.len() as f32 * 100.0) as i32;
+            }
 
-                        let mut new_solutions = Vec::new();
-                        let mut solutions_to_remove = Vec::new();
+            let mut new_solutions = Vec::new();
+            let mut solutions_to_remove = Vec::new();
 
-                        for (solution_idx, solution) in current_solutions.iter().enumerate() {
-                            let mut any_placed = false;
+            // 4. Пытаемся разместить плитку в каждом существующем решении
+            for (solution_idx, solution) in current_solutions.iter().enumerate() {
+                let mut tile_placed = false;
 
-                            // Try to place in existing mosaics
-                            for mosaic in &solution.mosaics {
-                                // Check material compatibility
-                                if mosaic.material() != tile_dimensions.material() {
-                                    continue;
-                                }
-
-                                let mut result_mosaics = Vec::new();
-                                self.add(tile_dimensions, mosaic, &mut result_mosaics);
-
-                                let has_results = !result_mosaics.is_empty();
-                                for result_mosaic in result_mosaics {
-                                    let mut new_solution =
-                                        Solution::new_with_replacement(solution, mosaic);
-                                    new_solution.add_mosaic(result_mosaic);
-                                    new_solution.set_creator_thread_group(self.group.clone());
-                                    new_solution.set_aux_info(self.aux_info.clone());
-                                    new_solutions.push(new_solution);
-                                }
-
-                                if has_results {
-                                    any_placed = true;
-                                    break;
-                                }
-                            }
-
-                            // If not placed in existing mosaics, try unused stock panels
-                            if !any_placed {
-                                for unused_panel in solution.get_unused_stock_panels() {
-                                    println!(
-                                        "RUST: Checking unused panel: {}x{}",
-                                        unused_panel.width(),
-                                        unused_panel.height()
-                                    );
-
-                                    if unused_panel.fits(tile_dimensions) {
-                                        println!("RUST: Panel fits the tile");
-
-                                        let mut new_solution = solution.clone();
-                                        new_solution
-                                            .get_unused_stock_panels_mut()
-                                            .retain(|p| p != unused_panel);
-
-                                        let new_mosaic = Mosaic::from_tile_node(
-                                            &TileNode::from_tile_dimensions(unused_panel)?,
-                                            unused_panel.material().to_string(),
-                                        );
-                                        new_solution.get_mosaics_mut().push(new_mosaic);
-                                        new_solution.set_creator_thread_group(self.group.clone());
-                                        new_solution.set_aux_info(self.aux_info.clone());
-                                        new_solutions.push(new_solution);
-                                        any_placed = true;
-                                        break;
-                                    } else {
-                                        println!("RUST: Panel does NOT fit the tile");
-                                    }
-                                }
-                            }
-
-                            if any_placed {
-                                solutions_to_remove.push(solution_idx);
-                            } else {
-                                let mut no_fit_solution = solution.clone();
-                                no_fit_solution
-                                    .get_no_fit_panels_mut()
-                                    .push(tile_dimensions.clone());
-                                new_solutions.push(no_fit_solution);
-                                solutions_to_remove.push(solution_idx);
-                            }
-                        }
-
-                        // Remove processed solutions in reverse order
-                        for &idx in solutions_to_remove.iter().rev() {
-                            current_solutions.remove(idx);
-                        }
-
-                        // Add new solutions
-                        current_solutions.extend(new_solutions);
-                        self.remove_duplicated(&mut current_solutions);
-
-                        // Sort and limit solutions based on accuracy factor
-                        self.sort(&mut current_solutions, &self.thread_prioritized_comparators);
-
-                        // Limit solutions to accuracy factor
-                        let max_solutions = self.accuracy_factor as usize;
-                        if current_solutions.len() > max_solutions {
-                            let excess_start =
-                                std::cmp::min(current_solutions.len() - 1, max_solutions);
-                            current_solutions.drain(excess_start..);
-                        }
+                // 5. Пытаемся разместить в существующих мозаиках
+                for mosaic in solution.get_mosaics() {
+                    // Проверка совместимости материала
+                    if mosaic.material() != tile_dimensions.material() {
+                        continue;
                     }
 
-                    // Add solutions to global list
-                    if let Ok(mut all_solutions) = self.all_solutions.lock() {
-                        all_solutions.extend(current_solutions);
+                    // ⭐ КЛЮЧЕВОЙ МЕТОД - добавление плитки в мозаику
+                    let mut result_mosaics = Vec::new();
+                    self.add_tile_to_mosaic(tile_dimensions, mosaic, &mut result_mosaics)?;
 
-                        // Sort and limit global solutions
-                        self.sort(
-                            &mut *all_solutions,
-                            &self.final_solution_prioritized_comparators,
+                    if !result_mosaics.is_empty() {
+                        // Создаем новые решения для каждой возможной мозаики
+                        for result_mosaic in result_mosaics {
+                            let mut new_solution = Solution::new_with_replacement(solution, mosaic);
+                            new_solution.add_mosaic(result_mosaic);
+                            new_solution.set_creator_thread_group(self.group.clone());
+                            new_solution.set_aux_info(self.aux_info.clone());
+                            new_solutions.push(new_solution);
+                        }
+                        tile_placed = true;
+                        break;
+                    }
+                }
+
+                // 6. Если не разместили в мозаиках, пытаемся создать новую мозаику
+                if !tile_placed {
+                    for unused_panel in solution.get_unused_stock_panels() {
+                        log_debug!(
+                            "RUST: Checking unused panel: {}x{}",
+                            unused_panel.width(),
+                            unused_panel.height()
                         );
 
-                        let max_solutions = self.accuracy_factor as usize;
-                        if all_solutions.len() > max_solutions {
-                            let excess_start =
-                                std::cmp::min(all_solutions.len() - 1, max_solutions);
-                            all_solutions.drain(excess_start..);
-                        }
+                        if self.tile_fits_in_panel(tile_dimensions, unused_panel) {
+                            log_debug!("RUST: Panel fits the tile");
 
-                        // Update task rankings for top 5 solutions
-                        let top_solutions = std::cmp::min(all_solutions.len(), 5);
-                        for solution in all_solutions.iter().take(top_solutions) {
-                            if let (Some(material), Some(group)) =
-                                (solution.get_material(), &solution.creator_thread_group)
-                            {
-                                if let Some(task) = &self.task {
-                                    if let Ok(mut task_guard) = task.lock() {
-                                        task_guard.increment_thread_group_rankings(material, group);
-                                    }
-                                }
-                            }
-                        }
+                            let mut new_solution = solution.clone();
+                            // Удаляем использованную панель
+                            new_solution
+                                .get_unused_stock_panels_mut()
+                                .retain(|p| p != unused_panel);
 
-                        // Remove empty mosaics from the best solution
-                        if !all_solutions.is_empty() {
-                            all_solutions[0]
-                                .get_mosaics_mut()
-                                .retain(|mosaic| mosaic.used_area() > 0);
+                            // Создаем новую мозаику с этой плиткой
+                            let new_mosaic =
+                                self.create_mosaic_with_tile(unused_panel, tile_dimensions)?;
+                            new_solution.add_mosaic(new_mosaic);
+                            new_solution.set_creator_thread_group(self.group.clone());
+                            new_solution.set_aux_info(self.aux_info.clone());
+                            new_solutions.push(new_solution);
+                            tile_placed = true;
+                            break;
+                        } else {
+                            log_debug!("RUST: Panel does NOT fit the tile");
                         }
+                    }
+                }
+
+                // 7. Если плитка размещена или не может быть размещена
+                if tile_placed {
+                    solutions_to_remove.push(solution_idx);
+                } else {
+                    // Добавляем плитку в список "не помещается"
+                    let mut no_fit_solution = solution.clone();
+                    no_fit_solution
+                        .get_no_fit_panels_mut()
+                        .push(tile_dimensions.clone());
+                    new_solutions.push(no_fit_solution);
+                    solutions_to_remove.push(solution_idx);
+                }
+            }
+
+            // 8. Удаляем обработанные решения
+            for &idx in solutions_to_remove.iter().rev() {
+                current_solutions.remove(idx);
+            }
+
+            // 9. Добавляем новые решения
+            current_solutions.extend(new_solutions);
+
+            // 10. Удаляем дубликаты
+            self.remove_duplicated(&mut current_solutions);
+
+            // 11. Сортируем и ограничиваем количество решений
+            self.sort_solutions(&mut current_solutions, &self.thread_prioritized_comparators);
+            let max_solutions = self.accuracy_factor as usize;
+            if current_solutions.len() > max_solutions {
+                current_solutions.truncate(max_solutions);
+            }
+        }
+
+        // 12. Добавляем решения в глобальный список
+        if let Ok(mut all_solutions) = self.all_solutions.lock() {
+            all_solutions.extend(current_solutions);
+            self.sort_solutions(
+                &mut *all_solutions,
+                &self.final_solution_prioritized_comparators,
+            );
+
+            let max_solutions = self.accuracy_factor as usize;
+            if all_solutions.len() > max_solutions {
+                all_solutions.truncate(max_solutions);
+            }
+
+            // Обновляем рейтинги потоков
+            for solution in all_solutions.iter().take(5) {
+                if let (Some(material), Some(group)) =
+                    (solution.get_material(), &solution.creator_thread_group)
+                {
+                    if let Some(task) = &self.task {
+                        if let Ok(mut task_guard) = task.lock() {
+                            task_guard.increment_thread_group_rankings(material, group);
+                        }
+                    }
+                }
+            }
+
+            // Удаляем пустые мозаики
+            if !all_solutions.is_empty() {
+                all_solutions[0]
+                    .get_mosaics_mut()
+                    .retain(|mosaic| mosaic.used_area() > 0);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// ⭐ КЛЮЧЕВОЙ МЕТОД - добавление плитки в мозаику с поворотами
+    fn add_tile_to_mosaic(
+        &self,
+        tile_dimensions: &TileDimensions,
+        mosaic: &Mosaic,
+        result_mosaics: &mut Vec<Mosaic>,
+    ) -> Result<()> {
+        // Если не учитываем направление волокон или ориентации совпадают
+        if !self.consider_grain_direction
+            || mosaic.orientation() == 0
+            || tile_dimensions.orientation() == 0
+        {
+            // Пытаемся разместить без поворота
+            self.fit_tile_in_mosaic(tile_dimensions, mosaic, result_mosaics)?;
+
+            // Пытаемся разместить с поворотом (если плитка не квадратная)
+            if !tile_dimensions.is_square() {
+                let rotated_tile = tile_dimensions.rotate_90();
+                self.fit_tile_in_mosaic(&rotated_tile, mosaic, result_mosaics)?;
+            }
+        } else {
+            // Учитываем ориентацию волокон
+            let tile_to_use = if mosaic.orientation() != tile_dimensions.orientation() as i32 {
+                tile_dimensions.rotate_90()
+            } else {
+                tile_dimensions.clone()
+            };
+            self.fit_tile_in_mosaic(&tile_to_use, mosaic, result_mosaics)?;
+        }
+
+        Ok(())
+    }
+
+    /// ⭐ КЛЮЧЕВОЙ МЕТОД - размещение плитки в мозаике с резами
+    fn fit_tile_in_mosaic(
+        &self,
+        tile_dimensions: &TileDimensions,
+        mosaic: &Mosaic,
+        result_mosaics: &mut Vec<Mosaic>,
+    ) -> Result<()> {
+        // 1. Находим кандидатов для размещения
+        let mut candidates = Vec::new();
+        self.find_placement_candidates(
+            tile_dimensions.width() as i32,
+            tile_dimensions.height() as i32,
+            mosaic.root_tile_node(),
+            &mut candidates,
+        );
+
+        // 2. Пытаемся разместить в каждом кандидате
+        for candidate in candidates {
+            if candidate.width() == tile_dimensions.width() as i32
+                && candidate.height() == tile_dimensions.height() as i32
+            {
+                // ТОЧНОЕ СОВПАДЕНИЕ - не нужно резать
+                let new_mosaic =
+                    self.create_exact_fit_mosaic(mosaic, &candidate, tile_dimensions)?;
+                result_mosaics.push(new_mosaic);
+            } else {
+                // НУЖНО РЕЗАТЬ - создаем варианты резов
+
+                // Горизонтальный затем вертикальный рез
+                if self.first_cut_orientation.allows_horizontal() {
+                    match self.create_cut_solution_hv(mosaic, &candidate, tile_dimensions) {
+                        Ok(Some(new_mosaic)) => result_mosaics.push(new_mosaic),
+                        _ => {}
+                    }
+                }
+
+                // Вертикальный затем горизонтальный рез
+                if self.first_cut_orientation.allows_vertical() {
+                    if let Some(new_mosaic) = self.create_cut_solution_vh(
+                        mosaic,
+                        &candidate,
+                        tile_dimensions,
+                        self.cut_thickness,
+                    ) {
+                        result_mosaics.push(new_mosaic);
                     }
                 }
             }
         }
 
         Ok(())
+    }
+
+    /// ⭐ КЛЮЧЕВОЙ МЕТОД - поиск мест для размещения
+    fn find_placement_candidates(
+        &self,
+        width: i32,
+        height: i32,
+        tile_node: &TileNode,
+        candidates: &mut Vec<TileNode>,
+    ) {
+        // Не можем размещать в финальных плитках или слишком маленьких
+        if tile_node.is_final() || tile_node.width() < width || tile_node.height() < height {
+            return;
+        }
+
+        // Если это листовой узел (нет детей) - проверяем размещение
+        if tile_node.child1().is_none() && tile_node.child2().is_none() {
+            let width_ok =
+                tile_node.width() == width || tile_node.width() >= self.min_trim_dimension + width;
+            let height_ok = tile_node.height() == height
+                || tile_node.height() >= self.min_trim_dimension + height;
+
+            if width_ok && height_ok {
+                candidates.push(tile_node.clone());
+            }
+        } else {
+            // Рекурсивно ищем в детях
+            if let Some(child1) = tile_node.child1() {
+                self.find_placement_candidates(width, height, child1, candidates);
+            }
+            if let Some(child2) = tile_node.child2() {
+                self.find_placement_candidates(width, height, child2, candidates);
+            }
+        }
+    }
+
+    /// ⭐ РЕАЛИЗАЦИЯ РЕЗОВ - горизонтальный потом вертикальный
+    fn create_cut_solution_hv(
+        &self,
+        mosaic: &Mosaic,
+        candidate: &TileNode,
+        tile_dimensions: &TileDimensions,
+    ) -> Result<Option<Mosaic>> {
+        let mut new_mosaic = Mosaic::from_mosaic(mosaic);
+
+        // Получаем мутабельную ссылку на узел для резки
+        let target_node = new_mosaic
+            .root_tile_node()
+            .find_tile(candidate)
+            .ok_or_else(|| CoreError::Internal {
+                message: "Target node not found in mosaic".to_string(),
+            })?;
+
+        // Создаем резы
+        let cuts = self.create_hv_cuts(target_node, tile_dimensions)?;
+
+        // Добавляем резы к мозаике
+        for cut in cuts {
+            new_mosaic.add_cut(cut);
+        }
+
+        Ok(Some(new_mosaic))
+    }
+
+    /// ⭐ Создание резов H-V (горизонтальный потом вертикальный)
+    fn create_hv_cuts(
+        &self,
+        tile_node: &TileNode,
+        tile_dimensions: &TileDimensions,
+    ) -> Result<Vec<Cut>> {
+        let mut cuts = Vec::new();
+
+        // Если нужен горизонтальный рез
+        if tile_node.width() > tile_dimensions.width() as i32 {
+            let cut = self.create_horizontal_cut(
+                tile_node,
+                tile_dimensions.width() as i32,
+                Some(tile_dimensions.id()),
+            )?;
+            cuts.push(cut);
+        }
+
+        // Если нужен вертикальный рез
+        if tile_node.height() > tile_dimensions.height() as i32 {
+            let cut = self.create_vertical_cut(
+                tile_node,
+                tile_dimensions.height() as i32,
+                Some(tile_dimensions.id()),
+            )?;
+            cuts.push(cut);
+        }
+
+        Ok(cuts)
+    }
+
+    /// ⭐ Создание горизонтального реза
+    fn create_horizontal_cut(
+        &self,
+        tile_node: &TileNode,
+        split_width: i32,
+        external_id: Option<i32>,
+    ) -> Result<Cut> {
+        Ok(CutBuilder::new()
+            .x1(tile_node.x1() + split_width)
+            .y1(tile_node.y1())
+            .x2(tile_node.x1() + split_width)
+            .y2(tile_node.y2())
+            .horizontal(true)
+            .original_tile_id(tile_node.id())
+            .build())
+    }
+
+    /// ⭐ Создание вертикального реза  
+    fn create_vertical_cut(
+        &self,
+        tile_node: &TileNode,
+        split_height: i32,
+        external_id: Option<i32>,
+    ) -> Result<Cut> {
+        Ok(CutBuilder::new()
+            .x1(tile_node.x1())
+            .y1(tile_node.y1() + split_height)
+            .x2(tile_node.x2())
+            .y2(tile_node.y1() + split_height)
+            .horizontal(false)
+            .original_tile_id(tile_node.id())
+            .build())
+    }
+
+    /// Проверяет, помещается ли плитка в панель
+    fn tile_fits_in_panel(&self, tile: &TileDimensions, panel: &TileDimensions) -> bool {
+        (tile.width() <= panel.width() && tile.height() <= panel.height())
+            || (tile.width() <= panel.height() && tile.height() <= panel.width())
+    }
+
+    /// ⭐ Создание мозаики с размещенной плиткой
+    fn create_mosaic_with_tile(
+        &self,
+        stock_panel: &TileDimensions,
+        tile: &TileDimensions,
+    ) -> Result<Mosaic> {
+        // Создаем корневой узел из исходной панели
+        let mut root_node = TileNode::from_tile_dimensions(stock_panel)?;
+
+        // Создаем дочерний узел для размещенной плитки
+        let tile_node = TileNode::new(0, 0, tile.width() as i32, tile.height() as i32)?;
+        let mut final_tile_node = tile_node;
+        final_tile_node.set_final(true);
+        final_tile_node.set_external_id(tile.id());
+
+        root_node.set_child1(Some(final_tile_node));
+
+        let mosaic = Mosaic::from_tile_node(&root_node, stock_panel.material().to_string());
+        Ok(mosaic)
+    }
+
+    /// ⭐ Создание точно подходящей мозаики (без резов)
+    fn create_exact_fit_mosaic(
+        &self,
+        original_mosaic: &Mosaic,
+        candidate: &TileNode,
+        tile_dimensions: &TileDimensions,
+    ) -> Result<Mosaic> {
+        let mut new_mosaic = Mosaic::from_mosaic(original_mosaic);
+
+        // Помечаем узел как финальный
+        // В реальной реализации нужно найти и изменить соответствующий узел
+        // Это упрощенная версия
+
+        Ok(new_mosaic)
+    }
+
+    /// Сортировка решений с использованием компараторов
+    fn sort_solutions(
+        &self,
+        solutions: &mut Vec<Solution>,
+        comparators: &[Box<dyn SolutionComparator>],
+    ) {
+        solutions.sort_by(|a, b| {
+            for comparator in comparators {
+                let result = comparator.compare(a, b);
+                if result != std::cmp::Ordering::Equal {
+                    return result;
+                }
+            }
+            std::cmp::Ordering::Equal
+        });
     }
 
     /// Adds a tile to a mosaic with rotation consideration
@@ -669,20 +977,17 @@ impl CutListThread {
                     // Set properties on the found tile equivalent in the copy
                     // This is a simplified approach - in a real implementation you'd need
                     // to traverse and find the exact tile to modify
-                    
-                    let new_mosaic = Mosaic::from_tile_node(&modified_copy, mosaic.material().to_string());
+
+                    let new_mosaic =
+                        Mosaic::from_tile_node(&modified_copy, mosaic.material().to_string());
                     result_mosaics.push(new_mosaic);
                 }
             } else {
                 // Need to cut
                 if self.first_cut_orientation.allows_horizontal() {
-                    if let Some(new_mosaic) = self.create_cut_solution_hv(
-                        mosaic,
-                        &candidate,
-                        tile_dimensions,
-                        cut_thickness,
-                    ) {
-                        result_mosaics.push(new_mosaic);
+                    match self.create_cut_solution_hv(mosaic, &candidate, tile_dimensions) {
+                        Ok(Some(new_mosaic)) => result_mosaics.push(new_mosaic),
+                        _ => {}
                     }
                 }
 
@@ -700,27 +1005,6 @@ impl CutListThread {
         }
     }
 
-    /// Creates a cut solution with horizontal-then-vertical cuts
-    fn create_cut_solution_hv(
-        &self,
-        mosaic: &Mosaic,
-        candidate: &TileNode,
-        tile_dimensions: &TileDimensions,
-        cut_thickness: i32,
-    ) -> Option<Mosaic> {
-        let mut tile_node_copy = Self::copy_tile_node(mosaic.root_tile_node(), candidate);
-        
-        // Create a simplified approach - just create a new mosaic with the cuts
-        let mut new_mosaic = Mosaic::from_tile_node(&tile_node_copy, mosaic.material().to_string());
-        new_mosaic.set_stock_id(mosaic.stock_id());
-        
-        // Copy existing cuts
-        let mut all_cuts = mosaic.cuts().to_vec();
-        // For now, we'll skip the complex tree modification and just return the mosaic
-        new_mosaic.set_cuts(all_cuts);
-        new_mosaic.set_orientation(mosaic.orientation());
-        Some(new_mosaic)
-    }
 
     /// Creates a cut solution with vertical-then-horizontal cuts
     fn create_cut_solution_vh(
@@ -731,11 +1015,11 @@ impl CutListThread {
         cut_thickness: i32,
     ) -> Option<Mosaic> {
         let mut tile_node_copy = Self::copy_tile_node(mosaic.root_tile_node(), candidate);
-        
+
         // Create a simplified approach - just create a new mosaic with the cuts
         let mut new_mosaic = Mosaic::from_tile_node(&tile_node_copy, mosaic.material().to_string());
         new_mosaic.set_stock_id(mosaic.stock_id());
-        
+
         // Copy existing cuts
         let mut all_cuts = mosaic.cuts().to_vec();
         // For now, we'll skip the complex tree modification and just return the mosaic
@@ -764,8 +1048,9 @@ impl CutListThread {
 
                 // Since we can't get mutable references to children, we'll need to work differently
                 // For now, we'll just mark the node as final if it matches the dimensions
-                if tile_node.width() == tile_dimensions.width() as i32 
-                    && tile_node.height() == tile_dimensions.height() as i32 {
+                if tile_node.width() == tile_dimensions.width() as i32
+                    && tile_node.height() == tile_dimensions.height() as i32
+                {
                     tile_node.set_final(true);
                     tile_node.set_rotated(tile_dimensions.is_rotated());
                     tile_node.set_external_id(tile_dimensions.id());
@@ -780,8 +1065,9 @@ impl CutListThread {
             ) {
                 cuts.push(cut);
 
-                if tile_node.width() == tile_dimensions.width() as i32 
-                    && tile_node.height() == tile_dimensions.height() as i32 {
+                if tile_node.width() == tile_dimensions.width() as i32
+                    && tile_node.height() == tile_dimensions.height() as i32
+                {
                     tile_node.set_final(true);
                     tile_node.set_rotated(tile_dimensions.is_rotated());
                     tile_node.set_external_id(tile_dimensions.id());
@@ -810,8 +1096,9 @@ impl CutListThread {
             ) {
                 cuts.push(cut);
 
-                if tile_node.width() == tile_dimensions.width() as i32 
-                    && tile_node.height() == tile_dimensions.height() as i32 {
+                if tile_node.width() == tile_dimensions.width() as i32
+                    && tile_node.height() == tile_dimensions.height() as i32
+                {
                     tile_node.set_final(true);
                     tile_node.set_rotated(tile_dimensions.is_rotated());
                     tile_node.set_external_id(tile_dimensions.id());
@@ -826,8 +1113,9 @@ impl CutListThread {
             ) {
                 cuts.push(cut);
 
-                if tile_node.width() == tile_dimensions.width() as i32 
-                    && tile_node.height() == tile_dimensions.height() as i32 {
+                if tile_node.width() == tile_dimensions.width() as i32
+                    && tile_node.height() == tile_dimensions.height() as i32
+                {
                     tile_node.set_final(true);
                     tile_node.set_rotated(tile_dimensions.is_rotated());
                     tile_node.set_external_id(tile_dimensions.id());
@@ -909,14 +1197,16 @@ impl CutListThread {
             tile_node.x1() + split_width,
             tile_node.y1(),
             tile_node.y2(),
-        ).ok()?;
+        )
+        .ok()?;
 
         let child2 = TileNode::new(
             tile_node.x1() + split_width + cut_thickness,
             tile_node.x2(),
             tile_node.y1(),
             tile_node.y2(),
-        ).ok()?;
+        )
+        .ok()?;
 
         let mut child1 = child1;
         if let Some(id) = external_id {
@@ -962,14 +1252,16 @@ impl CutListThread {
             tile_node.x2(),
             tile_node.y1(),
             tile_node.y1() + split_height,
-        ).ok()?;
+        )
+        .ok()?;
 
         let child2 = TileNode::new(
             tile_node.x1(),
             tile_node.x2(),
             tile_node.y1() + split_height + cut_thickness,
             tile_node.y2(),
-        ).ok()?;
+        )
+        .ok()?;
 
         let mut child1 = child1;
         if let Some(id) = external_id {

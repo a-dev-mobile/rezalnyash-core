@@ -250,15 +250,15 @@ fn wait_for_completion(
                 );
             }
             
-            match status.get_status() {
-                Some("FINISHED") => {
+            match status.get_status().as_deref() {
+                Some("FINISHED") | Some("Finished") => {
                     let total_seconds = start_time.elapsed().as_secs();
                     log_info!("\n=== Задача выполнена за {} секунд! ===", total_seconds);
-                    print_solution(status.get_solution().unwrap());
-                    generate_html_visualization(status.get_solution().unwrap())?;
+                    print_solution(&status.get_solution().unwrap());
+                    generate_html_visualization(&status.get_solution().unwrap())?;
                     break;
                 }
-                Some(s) if s == "ERROR" || s == "TERMINATED" || s == "STOPPED" => {
+                Some(s) if s == "ERROR" || s == "Error" || s == "TERMINATED" || s == "Terminated" || s == "STOPPED" || s == "Stopped" => {
                     log_error!("Задача завершена с ошибкой: {}", s);
                     break;
                 }

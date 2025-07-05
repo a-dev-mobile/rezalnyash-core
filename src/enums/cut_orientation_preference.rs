@@ -12,6 +12,26 @@ pub enum CutOrientationPreference {
 }
 
 impl CutOrientationPreference {
+    /// Converts to numeric value (for compatibility with Java)
+    pub fn to_numeric(&self) -> i32 {
+        match self {
+            CutOrientationPreference::Both => 0,
+            CutOrientationPreference::Horizontal => 1,
+            CutOrientationPreference::Vertical => 2,
+        }
+    }
+
+    /// Checks if horizontal cuts are allowed
+    pub fn allows_horizontal(&self) -> bool {
+        matches!(self, CutOrientationPreference::Both | CutOrientationPreference::Horizontal)
+    }
+
+    /// Checks if vertical cuts are allowed
+    pub fn allows_vertical(&self) -> bool {
+        matches!(self, CutOrientationPreference::Both | CutOrientationPreference::Vertical)
+    }
+
+
     /// Convert from integer value
     pub fn from_int(value: i32) -> Option<Self> {
         match value {
@@ -27,15 +47,7 @@ impl CutOrientationPreference {
         self as i32
     }
 
-    /// Check if this preference allows horizontal cuts
-    pub fn allows_horizontal(self) -> bool {
-        matches!(self, Self::Both | Self::Horizontal)
-    }
 
-    /// Check if this preference allows vertical cuts
-    pub fn allows_vertical(self) -> bool {
-        matches!(self, Self::Both | Self::Vertical)
-    }
 }
 
 impl Default for CutOrientationPreference {

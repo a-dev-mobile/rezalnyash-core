@@ -9,3 +9,6 @@ pub mod cut_list_optimizer_service_impl;
 
 pub use cut_list_optimizer_service::CutListOptimizerService;
 pub use cut_list_optimizer_service_impl::CutListOptimizerServiceImpl;
+
+#[cfg(test)]
+mod cut_list_optimizer_service_impl_test;
