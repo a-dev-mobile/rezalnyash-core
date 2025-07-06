@@ -5,31 +5,24 @@ use uuid::Uuid;
 
 use super::panel_instance::PanelInstance;
 
-/// Группа одинаковых панелей для оптимизации перестановок
+/// Группа одинаковых панелей для оптимизации (без учета поворота)
 #[derive(Serialize, Debug, Clone)]
 pub struct PanelGroup {
-    pub group_id: String,           // Уникальный идентификатор группы
-    pub width: u32,                 // Ширина панелей в группе (реальная, не эффективная)
-    pub height: u32,                // Высота панелей в группе (реальная, не эффективная)
-    pub is_rotated: bool,           // Повернуты ли панели
+    pub id: u8,                     // Уникальный ID размера
+    pub group: String,              // Формат gropup=N[WxH]
+    pub width: u32,                 // Ширина панелей в группе
+    pub height: u32,                // Высота панелей в группе
     pub instances: Vec<PanelInstance>, // Все экземпляры в группе
     pub count: usize,               // Количество панелей в группе
 }
 
 impl PanelGroup {
-    pub fn new(width: u32, height: u32, is_rotated: bool) -> Self {
-        // Используем реальные размеры для group_id
-        let group_id = if is_rotated {
-            format!("{}x{}_R", width, height) // Реальные размеры панели
-        } else {
-            format!("{}x{}_N", width, height) // Реальные размеры панели
-        };
-
+    pub fn new(width: u32, height: u32, id: u8) -> Self {
         Self {
-            group_id,
+            id,
+            group: String::new(), // Будет заполнен позже
             width,
             height,
-            is_rotated,
             instances: Vec::new(),
             count: 0,
         }
@@ -41,12 +34,9 @@ impl PanelGroup {
         self.count = self.instances.len();
     }
 
-    /// Проверить, подходит ли экземпляр для этой группы
+    /// Проверить, подходит ли экземпляр для этой группы (по физическим размерам)
     pub fn matches(&self, instance: &PanelInstance) -> bool {
-        // Сравниваем реальные размеры и ориентацию
-        instance.width == self.width && 
-        instance.height == self.height && 
-        instance.is_rotated == self.is_rotated
+        instance.width == self.width && instance.height == self.height
     }
 
     /// Получить один экземпляр из группы (для представления)
@@ -79,12 +69,13 @@ impl PanelGroup {
         self.instances.is_empty()
     }
 
-    /// Получить эффективные размеры группы (с учетом поворота)
-    pub fn effective_dimensions(&self) -> (u32, u32) {
-        if self.is_rotated {
-            (self.height, self.width)
-        } else {
-            (self.width, self.height)
-        }
+    /// Получить размеры группы
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    /// Установить group строку
+    pub fn set_group_string(&mut self, group_number: u8) {
+        self.group = format!("gropup={}[{}x{}]", group_number, self.width, self.height);
     }
 }
