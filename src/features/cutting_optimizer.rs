@@ -35,22 +35,29 @@ impl CuttingOptimizer {
         );
 
         // Сохраняем исходные данные для отладки
-        save_to_json(&self.panels, "_base_panels.json");
+        save_to_json(&self.panels, "_base_panels.json").unwrap();
 
         // ЭТАП 1: Развернуть панели по количеству и повороту
         let expanded_panels = self.expand_panels();
         println!("Развернуто панелей: {}", expanded_panels.len());
-        save_to_json(&expanded_panels, "_expanded_panels.json");
+        save_to_json(&expanded_panels, "_expanded_panels.json").unwrap();
 
         // ЭТАП 2: Сгруппировать панели для оптимизации перестановок
         let grouped_panels = PanelGrouper::group_panels(&expanded_panels);
         println!("Создано групп: {}", grouped_panels.len());
         PanelGrouper::print_grouping_stats(&grouped_panels);
-        save_to_json(&grouped_panels, "_grouped_panels.json");
+        save_to_json(&grouped_panels, "_grouped_panels.json").unwrap();
 
+
+
+        
         // ЭТАП 3: Преобразуем группы обратно в плоский список для перестановок
         let flat_panels = PanelGrouper::flatten_groups(&grouped_panels);
         
+
+
+
+
         // ЭТАП 4: Генерировать перестановки
         println!("Генерация перестановок...");
         let permutations = PermutationGenerator::generate_all_permutations(flat_panels);

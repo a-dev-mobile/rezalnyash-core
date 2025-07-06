@@ -9,8 +9,8 @@ use super::panel_instance::PanelInstance;
 #[derive(Serialize, Debug, Clone)]
 pub struct PanelGroup {
     pub group_id: String,           // Уникальный идентификатор группы
-    pub width: u32,                 // Ширина панелей в группе
-    pub height: u32,                // Высота панелей в группе
+    pub width: u32,                 // Ширина панелей в группе (реальная, не эффективная)
+    pub height: u32,                // Высота панелей в группе (реальная, не эффективная)
     pub is_rotated: bool,           // Повернуты ли панели
     pub instances: Vec<PanelInstance>, // Все экземпляры в группе
     pub count: usize,               // Количество панелей в группе
@@ -18,10 +18,11 @@ pub struct PanelGroup {
 
 impl PanelGroup {
     pub fn new(width: u32, height: u32, is_rotated: bool) -> Self {
+        // Используем реальные размеры для group_id
         let group_id = if is_rotated {
-            format!("{}x{}_R", height, width) // Для повернутых - высота x ширина
+            format!("{}x{}_R", width, height) // Реальные размеры панели
         } else {
-            format!("{}x{}_N", width, height) // Для обычных - ширина x высота
+            format!("{}x{}_N", width, height) // Реальные размеры панели
         };
 
         Self {
@@ -42,9 +43,9 @@ impl PanelGroup {
 
     /// Проверить, подходит ли экземпляр для этой группы
     pub fn matches(&self, instance: &PanelInstance) -> bool {
-        let (inst_width, inst_height) = instance.effective_dimensions();
-        inst_width == self.width && 
-        inst_height == self.height && 
+        // Сравниваем реальные размеры и ориентацию
+        instance.width == self.width && 
+        instance.height == self.height && 
         instance.is_rotated == self.is_rotated
     }
 
@@ -78,8 +79,12 @@ impl PanelGroup {
         self.instances.is_empty()
     }
 
-    /// Получить эффективные размеры группы
+    /// Получить эффективные размеры группы (с учетом поворота)
     pub fn effective_dimensions(&self) -> (u32, u32) {
-        (self.width, self.height)
+        if self.is_rotated {
+            (self.height, self.width)
+        } else {
+            (self.width, self.height)
+        }
     }
 }
