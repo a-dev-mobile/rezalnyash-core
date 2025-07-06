@@ -1,466 +1,701 @@
-use rezalnyas_core::{
-    enums::{CutOrientationPreference, StatusCode}, log_debug, log_error, log_info, log_warn, logging::{init_logging, LogConfig, LogLevel}, models::{
-        calculation_request::{CalculationRequest, Edge, Panel}, calculation_response::CalculationResponse, client_info::ClientInfo, configuration::Configuration, performance_thresholds::PerformanceThresholds, watch_dog::{CutListLogger, DefaultCutListLogger}
-    }, services::{CutListOptimizerService, CutListOptimizerServiceImpl}
-};
-use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
+// Главный скрипт оптимизации раскроя
+// Упрощенная однопоточная версия Java-алгоритма
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Инициализация логирования
-    init_logging(LogConfig {
-        level: LogLevel::Debug,
-    });
+use std::collections::HashMap;
 
-    log_info!("=== Тест ===");
+// ============================================================================
+// ЭТАП 1: БАЗОВЫЕ СТРУКТУРЫ ДАННЫХ
+// ============================================================================
 
-    // Инициализируем сервис точно как в Java
-    let mut optimizer = CutListOptimizerServiceImpl::new();
-    optimizer.init(8); // Фиксированно 8 потоков
-    
-    // Создаем консольный логгер
-    let console_logger: Arc<dyn CutListLogger> = Arc::new(DefaultCutListLogger);
-    optimizer.set_cut_list_logger(console_logger);
-    
-    // Настройки
-    optimizer.set_allow_multiple_tasks_per_client(true); // Множественные задачи
-    
-    // Создаем запрос
-    let request = create_request()?;
-    
-    log_info!("Отправляем задачу с настройками...");
-    
-    // Отправляем задачу
-    let result = optimizer.submit_task(request);
-    
-    if result.status_code() == StatusCode::Ok.string_value() {
-        if let Some(task_id) = result.task_id() {
-            log_info!("Задача принята. ID: {}", task_id);
-            
-            // Ждем выполнения
-            wait_for_completion(&optimizer, task_id)?;
-        } else {
-            log_error!("Ошибка отправки задачи: task_id отсутствует");
+/// Базовый прямоугольник для всех геометрических операций
+#[derive(Debug, Clone, PartialEq)]
+pub struct Rectangle {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+impl Rectangle {
+    pub fn new(x: i32, y: i32, width: i32, height: i32) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
         }
-    } else {
-        log_error!("Ошибка отправки задачи: {}", result.status_code());
     }
 
-    Ok(())
+    pub fn area(&self) -> i64 {
+        (self.width as i64) * (self.height as i64)
+    }
+
+    pub fn fits(&self, other: &Rectangle) -> bool {
+        self.width >= other.width && self.height >= other.height
+    }
 }
 
-fn create_request() -> Result<CalculationRequest, Box<dyn std::error::Error>> {
-    let mut request = CalculationRequest::new();
-    
-    // Создаем информацию о клиенте
-    let client_info = ClientInfo::with_id("client".to_string())
-        .device("Desktop".to_string()) // Эмулируем устройство
-        .device_id("test-device-id".to_string());
-    
-    request.set_client_info(Some(client_info));
-    
-    // Более сложный набор деталей
-    let mut panels = Vec::new();
-    
-    // Деталь 1: 150.5x100.25 (2 шт)
-    let panel1 = Panel::new(
-        1,
-        "150.5".to_string(),
-        "100.25".to_string(),
-        2,
-        "DEFAULT_MATERIAL".to_string(),
-        true,
-        0,
-        Some("Деталь_1".to_string()),
-        None,
-    );
-    panels.push(panel1);
-    
-    // Деталь 2: 80.75x60.5 (3 шт)
-    let panel2 = Panel::new(
-        2,
-        "80.75".to_string(),
-        "60.5".to_string(),
-        3,
-        "DEFAULT_MATERIAL".to_string(),
-        true,
-        0,
-        Some("Деталь_2".to_string()),
-        None,
-    );
-    panels.push(panel2);
-    
-    // Деталь 3: 120.0x45.75 (1 шт)
-    let panel3 = Panel::new(
-        3,
-        "120.0".to_string(),
-        "45.75".to_string(),
-        1,
-        "DEFAULT_MATERIAL".to_string(),
-        true,
-        0,
-        Some("Деталь_3".to_string()),
-        None,
-    );
-    panels.push(panel3);
-    
-    // Деталь 4: 95.25x75.5 (2 шт)
-    let panel4 = Panel::new(
-        4,
-        "95.25".to_string(),
-        "75.5".to_string(),
-        2,
-        "DEFAULT_MATERIAL".to_string(),
-        true,
-        0,
-        Some("Деталь_4".to_string()),
-        None,
-    );
-    panels.push(panel4);
-    
-    // Деталь 5: 65.5x85.25 (1 шт)
-    let panel5 = Panel::new(
-        5,
-        "65.5".to_string(),
-        "85.25".to_string(),
-        1,
-        "DEFAULT_MATERIAL".to_string(),
-        true,
-        0,
-        Some("Деталь_5".to_string()),
-        None,
-    );
-    panels.push(panel5);
-    
-    // Деталь 6: 110.75x55.0 (2 шт)
-    let panel6 = Panel::new(
-        6,
-        "110.75".to_string(),
-        "55.0".to_string(),
-        2,
-        "DEFAULT_MATERIAL".to_string(),
-        true,
-        0,
-        Some("Деталь_6".to_string()),
-        None,
-    );
-    panels.push(panel6);
-    
-    // Деталь 7: 40.25x90.5 (3 шт)
-    let panel7 = Panel::new(
-        7,
-        "40.25".to_string(),
-        "90.5".to_string(),
-        3,
-        "DEFAULT_MATERIAL".to_string(),
-        true,
-        0,
-        Some("Деталь_7".to_string()),
-        None,
-    );
-    panels.push(panel7);
-    
-    // Деталь 8: 130.0x35.75 (1 шт)
-    let panel8 = Panel::new(
-        8,
-        "130.0".to_string(),
-        "35.75".to_string(),
-        1,
-        "DEFAULT_MATERIAL".to_string(),
-        true,
-        0,
-        Some("Деталь_8".to_string()),
-        None,
-    );
-    panels.push(panel8);
-    
-    request.set_panels(panels);
-    
-    // Одна заготовка
-    let mut stock_panels = Vec::new();
-    let stock_panel = Panel::new(
-        1,
-        "400.0".to_string(),
-        "300.0".to_string(),
-        1,
-        "DEFAULT_MATERIAL".to_string(),
-        true,
-        0,
-        Some("Заготовка_1".to_string()),
-        None,
-    );
-    stock_panels.push(stock_panel);
-    
-    request.set_stock_panels(stock_panels);
-    
-    // Настройки
-    let mut config = Configuration::default();
-    config.set_cut_thickness(Some("0".to_string())); // Точная толщина реза
-    config.set_use_single_stock_unit(false); // Разрешаем использовать разные листы
-    config.set_optimization_factor(2.0); // МАКСИМАЛЬНЫЙ фактор оптимизации = 2
-    config.set_optimization_priority(0); // Приоритет
-    config.set_cut_orientation_preference(CutOrientationPreference::Both); // Все направления резов
-    config.set_consider_orientation(false); // Учитываем ориентацию волокон
-    config.set_min_trim_dimension(Some("0".to_string())); // Разумный минимальный отход
-
-    // Настройка производительности
-    let max_threads = num_cpus::get() * 2;
-    // let max_threads = num_cpus::get() * 2;
-    let mut thresholds = PerformanceThresholds::new();
-    thresholds.set_max_simultaneous_threads(max_threads as u32)?;
-    thresholds.set_thread_check_interval(1000)?; // Реже проверяем, больше вычисляем
-    thresholds.set_max_simultaneous_tasks(1)?;
-    
-    config.set_performance_thresholds(Some(thresholds));
-    request.set_configuration(Some(config));
-    
-    log_info!("Создан запрос:");
-    log_info!("- Деталей: {}", request.panels().len());
-    log_info!("- Заготовка: {}x{}", 
-        request.stock_panels().get(0).map(|p| p.width()).unwrap_or("?"),
-        request.stock_panels().get(0).map(|p| p.height()).unwrap_or("?")
-    );
-    
-    Ok(request)
+/// Деталь для размещения
+#[derive(Debug, Clone)]
+pub struct Panel {
+    pub id: i32,
+    pub width: i32,
+    pub height: i32,
+    pub count: i32,
+    pub label: String,
+    pub is_rotated: bool,
 }
 
-fn wait_for_completion(
-    optimizer: &CutListOptimizerServiceImpl,
-    task_id: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    log_info!("Ожидание завершения задачи...");
-    
-    let max_attempts = 1800; // 5 минут
-    let mut attempts = 0;
-    let mut _last_progress = -1;
-    let start_time = std::time::Instant::now();
-    
-    while attempts < max_attempts {
-        thread::sleep(Duration::from_millis(100));
-        attempts += 1;
-        
-        if let Some(status) = optimizer.get_task_status(task_id) {
-            if attempts % 50 == 0 {
-                let elapsed_seconds = start_time.elapsed().as_secs();
-                log_info!("Статус: {}, прогресс: {}%, время: {}с",
-                    status.get_status().unwrap_or("UNKNOWN"),
-                    status.getpercentagedone(),
-                    elapsed_seconds
-                );
-            }
-            
-            match status.get_status().as_deref() {
-                Some("FINISHED") | Some("Finished") => {
-                    let total_seconds = start_time.elapsed().as_secs();
-                    log_info!("\n=== Задача выполнена за {} секунд! ===", total_seconds);
-                    print_solution(&status.get_solution().unwrap());
-                    generate_html_visualization(&status.get_solution().unwrap())?;
-                    break;
-                }
-                Some(s) if s == "ERROR" || s == "Error" || s == "TERMINATED" || s == "Terminated" || s == "STOPPED" || s == "Stopped" => {
-                    log_error!("Задача завершена с ошибкой: {}", s);
-                    break;
-                }
-                _ => {
-                    // Продолжаем ждать
-                }
-            }
+impl Panel {
+    pub fn new(id: i32, width: i32, height: i32, count: i32, label: &str) -> Self {
+        Self {
+            id,
+            width,
+            height,
+            count,
+            label: label.to_string(),
+            is_rotated: false,
+        }
+    }
+
+    /// Поворот детали на 90 градусов
+    pub fn rotate(&self) -> Panel {
+        Panel {
+            id: self.id,
+            width: self.height,
+            height: self.width,
+            count: self.count,
+            label: self.label.clone(),
+            is_rotated: !self.is_rotated,
+        }
+    }
+
+    pub fn fits_in(&self, rect: &Rectangle) -> bool {
+        (self.width <= rect.width && self.height <= rect.height)
+            || (self.height <= rect.width && self.width <= rect.height)
+    }
+
+    pub fn area(&self) -> i64 {
+        (self.width as i64) * (self.height as i64)
+    }
+}
+
+/// Заготовка (исходный лист материала)
+#[derive(Debug, Clone)]
+pub struct Stock {
+    pub id: i32,
+    pub width: i32,
+    pub height: i32,
+    pub label: String,
+}
+
+impl Stock {
+    pub fn new(id: i32, width: i32, height: i32, label: &str) -> Self {
+        Self {
+            id,
+            width,
+            height,
+            label: label.to_string(),
+        }
+    }
+
+    pub fn area(&self) -> i64 {
+        (self.width as i64) * (self.height as i64)
+    }
+}
+
+/// Рез на листе
+#[derive(Debug, Clone)]
+pub struct Cut {
+    pub x1: i32,
+    pub y1: i32,
+    pub x2: i32,
+    pub y2: i32,
+    pub is_horizontal: bool,
+}
+
+impl Cut {
+    pub fn new_horizontal(x: i32, y: i32, length: i32) -> Self {
+        Self {
+            x1: x,
+            y1: y,
+            x2: x + length,
+            y2: y,
+            is_horizontal: true,
+        }
+    }
+
+    pub fn new_vertical(x: i32, y: i32, length: i32) -> Self {
+        Self {
+            x1: x,
+            y1: y,
+            x2: x,
+            y2: y + length,
+            is_horizontal: false,
+        }
+    }
+
+    pub fn length(&self) -> i32 {
+        if self.is_horizontal {
+            self.x2 - self.x1
         } else {
-            log_error!("Не удается получить статус задачи");
+            self.y2 - self.y1
+        }
+    }
+}
+
+// ============================================================================
+// ЭТАП 2: ДЕРЕВО РАЗРЕЗОВ (Tree Structure)
+// ============================================================================
+
+/// Узел дерева разрезов
+/// TODO: Взять логику из TileNode.java
+#[derive(Debug, Clone)]
+pub struct Node {
+    pub id: i32,
+    pub rectangle: Rectangle,
+    pub left_child: Option<Box<Node>>,
+    pub right_child: Option<Box<Node>>,
+    pub panel_id: Option<i32>, // ID размещенной детали
+    pub is_used: bool,
+    pub is_rotated: bool,
+}
+
+impl Node {
+    pub fn new(id: i32, rect: Rectangle) -> Self {
+        Self {
+            id,
+            rectangle: rect,
+            left_child: None,
+            right_child: None,
+            panel_id: None,
+            is_used: false,
+            is_rotated: false,
+        }
+    }
+
+    /// Поиск кандидатов для размещения панели
+    /// TODO: Реализовать по образцу findCandidates() из CutListThread.java
+    pub fn find_candidates(&self, panel_width: i32, panel_height: i32) -> Vec<&Node> {
+        // TODO: Рекурсивный поиск подходящих узлов
+        // 1. Проверить, подходит ли текущий узел
+        // 2. Если есть дети - искать в них рекурсивно
+        // 3. Вернуть список подходящих узлов
+        vec![]
+    }
+
+    /// Разместить панель в узле
+    /// TODO: Реализовать по образцу fitTile() из CutListThread.java
+    pub fn place_panel(&mut self, panel: &Panel, cut_thickness: i32) -> Result<Vec<Cut>, String> {
+        // TODO:
+        // 1. Проверить, помещается ли панель
+        // 2. Если точно совпадает - пометить как использованный
+        // 3. Если больше - создать разрезы и дочерние узлы
+        // 4. Вернуть список созданных резов
+        Err("Not implemented".to_string())
+    }
+
+    /// Горизонтальный разрез
+    /// TODO: Взять из splitHorizontally() в CutListThread.java
+    pub fn split_horizontal(&mut self, cut_position: i32, cut_thickness: i32) -> Cut {
+        // TODO: Создать два дочерних узла и вернуть рез
+        todo!("Implement horizontal split from splitHorizontally() method")
+    }
+
+    /// Вертикальный разрез  
+    /// TODO: Взять из splitVertically() в CutListThread.java
+    pub fn split_vertical(&mut self, cut_position: i32, cut_thickness: i32) -> Cut {
+        // TODO: Создать два дочерних узла и вернуть рез
+        todo!("Implement vertical split from splitVertically() method")
+    }
+
+    /// Получить использованную площадь
+    pub fn get_used_area(&self) -> i64 {
+        // TODO: Рекурсивно собрать площадь всех использованных узлов
+        0
+    }
+
+    /// Получить все финальные панели
+    pub fn get_final_panels(&self) -> Vec<PlacedPanel> {
+        // TODO: Рекурсивно собрать все размещенные панели
+        vec![]
+    }
+}
+
+/// Размещенная панель с координатами
+#[derive(Debug, Clone)]
+pub struct PlacedPanel {
+    pub panel_id: i32,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub is_rotated: bool,
+    pub label: String,
+}
+
+// ============================================================================
+// ЭТАП 3: РАЗМЕЩЕНИЕ НА ОДНОМ ЛИСТЕ
+// ============================================================================
+
+/// Результат размещения на одном листе
+#[derive(Debug, Clone)]
+pub struct Placement {
+    pub stock_id: i32,
+    pub root_node: Node,
+    pub cuts: Vec<Cut>,
+    pub placed_panels: Vec<PlacedPanel>,
+    pub used_area: i64,
+    pub waste_area: i64,
+    pub efficiency: f64,
+}
+
+impl Placement {
+    pub fn new(stock: &Stock) -> Self {
+        let root_rect = Rectangle::new(0, 0, stock.width, stock.height);
+        let root_node = Node::new(0, root_rect);
+
+        Self {
+            stock_id: stock.id,
+            root_node,
+            cuts: Vec::new(),
+            placed_panels: Vec::new(),
+            used_area: 0,
+            waste_area: stock.area(),
+            efficiency: 0.0,
+        }
+    }
+
+    /// Попытка разместить панель
+    /// TODO: Основная логика из computeSolutions() в CutListThread.java
+    pub fn try_place_panel(&mut self, panel: &Panel, cut_thickness: i32) -> bool {
+        // TODO:
+        // 1. Найти подходящие места (find_candidates)
+        // 2. Для каждого места попробовать разместить
+        // 3. Выбрать лучшее размещение
+        // 4. Обновить статистику
+        false
+    }
+
+    /// Попытка разместить список панелей в определенном порядке
+    /// TODO: Основной цикл из computeSolutions()
+    pub fn try_place_panels(&mut self, panels: &[Panel], cut_thickness: i32) -> usize {
+        let mut placed_count = 0;
+
+        for panel in panels {
+            // TODO: Попробовать разместить панель и ее поворот
+            // Взять логику из основного цикла computeSolutions()
+
+            // Пробуем разместить панель как есть
+            if self.try_place_panel(panel, cut_thickness) {
+                placed_count += 1;
+                continue;
+            }
+
+            // Пробуем повернуть и разместить
+            let rotated = panel.rotate();
+            if self.try_place_panel(&rotated, cut_thickness) {
+                placed_count += 1;
+                continue;
+            }
+
+            // Панель не поместилась
             break;
         }
+
+        self.update_statistics();
+        placed_count
     }
-    
-    Ok(())
+
+    fn update_statistics(&mut self) {
+        self.used_area = self.root_node.get_used_area();
+        let total_area = self.root_node.rectangle.area();
+        self.waste_area = total_area - self.used_area;
+        self.efficiency = if total_area > 0 {
+            self.used_area as f64 / total_area as f64
+        } else {
+            0.0
+        };
+    }
 }
 
-fn print_solution(solution: &CalculationResponse) {
-    log_info!("\n=== Результат оптимизации ===");
-    log_info!("Общая использованная площадь: {:.2}", solution.total_used_area);
-    log_info!("Общая потерянная площадь: {:.2}", solution.total_wasted_area);
-    log_info!("Коэффициент использования: {:.2}%", solution.total_used_area_ratio * 100.0);
-    log_info!("Количество резов: {}", solution.total_nbr_cuts);
-    log_info!("Общая длина резов: {:.2}", solution.total_cut_length);
-    log_info!("Время выполнения: {} мс", solution.elapsed_time);
-    
-    log_info!("\n=== Мозаики (листы с раскроем) ===");
-    for (i, mosaic) in solution.mosaics.iter().enumerate() {
-        log_info!("Лист {}:", i + 1);
-        log_info!("  Использование: {:.2}% ({:.2}/{:.2})",
-            mosaic.used_area_ratio * 100.0,
-            mosaic.used_area,
-            mosaic.used_area + mosaic.wasted_area
+// ============================================================================
+// ЭТАП 4: ПОЛНОЕ РЕШЕНИЕ
+// ============================================================================
+
+/// Полное решение задачи раскроя
+#[derive(Debug, Clone)]
+pub struct Solution {
+    pub placements: Vec<Placement>,
+    pub unplaced_panels: Vec<Panel>,
+    pub total_efficiency: f64,
+    pub total_cuts: usize,
+    pub total_cut_length: i32,
+    pub total_used_area: i64,
+    pub total_waste_area: i64,
+}
+
+impl Solution {
+    pub fn new() -> Self {
+        Self {
+            placements: Vec::new(),
+            unplaced_panels: Vec::new(),
+            total_efficiency: 0.0,
+            total_cuts: 0,
+            total_cut_length: 0,
+            total_used_area: 0,
+            total_waste_area: 0,
+        }
+    }
+
+    pub fn calculate_totals(&mut self) {
+        self.total_used_area = self.placements.iter().map(|p| p.used_area).sum();
+        self.total_waste_area = self.placements.iter().map(|p| p.waste_area).sum();
+        self.total_cuts = self.placements.iter().map(|p| p.cuts.len()).sum();
+        self.total_cut_length = self
+            .placements
+            .iter()
+            .flat_map(|p| &p.cuts)
+            .map(|c| c.length())
+            .sum();
+
+        let total_area = self.total_used_area + self.total_waste_area;
+        self.total_efficiency = if total_area > 0 {
+            self.total_used_area as f64 / total_area as f64
+        } else {
+            0.0
+        };
+    }
+
+    /// Оценка качества решения для сортировки
+    /// TODO: Взять приоритеты из SolutionComparatorFactory.java
+    pub fn score(&self) -> (i32, i64, i32) {
+        // Приоритет 1: Максимум размещенных панелей (отрицательное для сортировки по убыванию)
+        let placed_panels = -(self
+            .placements
+            .iter()
+            .map(|p| p.placed_panels.len() as i32)
+            .sum::<i32>());
+
+        // Приоритет 2: Минимум отходов
+        let waste_area = self.total_waste_area;
+
+        // Приоритет 3: Минимум резов
+        let cuts_count = self.total_cuts as i32;
+
+        (placed_panels, waste_area, cuts_count)
+    }
+}
+
+// ============================================================================
+// ЭТАП 5: ГЕНЕРАЦИЯ ПЕРЕСТАНОВОК
+// ============================================================================
+
+/// Генератор перестановок панелей
+/// TODO: Взять из Arrangement.generatePermutations() и упростить
+pub struct PermutationGenerator;
+
+impl PermutationGenerator {
+    /// Генерация всех перестановок панелей
+    /// TODO: Реализовать по образцу Arrangement.generatePermutations()
+    pub fn generate_permutations<T: Clone>(items: Vec<T>) -> Vec<Vec<T>> {
+        if items.is_empty() {
+            return vec![vec![]];
+        }
+
+        // TODO: Рекурсивная генерация перестановок
+        // Взять алгоритм из Arrangement.java
+
+        // Пока заглушка - возвращаем исходный порядок
+        vec![items]
+    }
+
+    /// Группировка одинаковых панелей для оптимизации
+    /// Реализовано по образцу generateGroups() из CutListOptimizerServiceImpl.java
+    pub fn group_panels(panels: &[Panel]) -> Vec<Panel> {
+        // Создаем карту для подсчета количества одинаковых панелей
+        let mut panel_counts: HashMap<String, i32> = HashMap::new();
+
+        // Подсчитываем количество каждого типа панели
+        for panel in panels {
+            let key = format!("{}x{}", panel.width, panel.height);
+            *panel_counts.entry(key).or_insert(0) += 1;
+        }
+
+        // Проверяем, является ли это одномерной оптимизацией
+        let is_one_dimensional = Self::is_one_dimensional_optimization(panels);
+
+        // Определяем максимальный размер группы
+        let max_group_size: usize = if is_one_dimensional {
+            1 // Для одномерной оптимизации группы не разбиваем
+        } else {
+            std::cmp::max(panels.len() / 100, 1)
+        };
+
+        let mut result = Vec::new();
+        let mut current_group_counts: HashMap<String, i32> = HashMap::new();
+        let mut group_id = 0;
+
+        for panel in panels {
+            let panel_key = format!("{}x{}", panel.width, panel.height);
+            let group_key = format!("{}{}", panel_key, group_id);
+
+            // Увеличиваем счетчик для текущей группы
+            let current_count = current_group_counts.entry(group_key.clone()).or_insert(0);
+            *current_count += 1;
+
+            // Создаем новую панель с group_id в качестве модификатора ID
+            let mut grouped_panel = panel.clone();
+            grouped_panel.id = panel.id * 1000 + group_id;
+            result.push(grouped_panel);
+
+            // Проверяем, нужно ли создать новую группу
+            let total_count = panel_counts.get(&panel_key).unwrap_or(&0);
+            if *total_count > max_group_size as i32 && *current_count > total_count / 4 {
+                group_id += 1;
+            }
+        }
+
+        result
+    }
+
+    /// Проверка является ли оптимизация одномерной
+    fn is_one_dimensional_optimization(panels: &[Panel]) -> bool {
+        if panels.is_empty() {
+            return false;
+        }
+
+        let mut common_dimensions = vec![panels[0].width, panels[0].height];
+
+        // Проверяем панели
+        for panel in panels {
+            // Удаляем размеры, которые не встречаются в текущей панели
+            common_dimensions.retain(|&dim| dim == panel.width || dim == panel.height);
+
+            if common_dimensions.is_empty() {
+                return false;
+            }
+        }
+
+        !common_dimensions.is_empty()
+    }
+}
+
+// ============================================================================
+// ЭТАП 6: ГЛАВНЫЙ ОПТИМИЗАТОР
+// ============================================================================
+
+/// Главный класс оптимизатора
+pub struct CuttingOptimizer {
+    pub panels: Vec<Panel>,
+    pub stock: Stock,
+    pub cut_thickness: i32,
+    pub max_sheets: usize,
+}
+
+impl CuttingOptimizer {
+    pub fn new(panels: Vec<Panel>, stock: Stock) -> Self {
+        Self {
+            panels,
+            stock,
+            cut_thickness: 0, // Толщина реза (обычно 0)
+            max_sheets: 10,   // Максимум листов для перебора
+        }
+    }
+
+    /// Главный метод оптимизации
+    /// TODO: Главная логика из compute() в CutListOptimizerServiceImpl.java
+    pub fn optimize(&self) -> Solution {
+        println!("=== Начало оптимизации ===");
+        println!(
+            "Деталей: {}, Заготовка: {}x{}",
+            self.panels.len(),
+            self.stock.width,
+            self.stock.height
         );
-        
-        if let Some(panels) = &mosaic.panels {
-            for panel in panels {
-                log_info!("    {:.1}x{:.1} x{} [{}]",
-                    panel.width,
-                    panel.height,
-                    panel.count,
-                    panel.label.as_deref().unwrap_or("")
+
+        // ЭТАП 1: Развернуть панели по количеству
+        let expanded_panels = self.expand_panels();
+        println!("Развернуто панелей: {}", expanded_panels.len());
+
+        // ЭТАП 2: Сгруппировать панели для оптимизации перестановок
+        let grouped_panels = PermutationGenerator::group_panels(&expanded_panels);
+
+        // ЭТАП 3: Генерировать перестановки
+        println!("Генерация перестановок...");
+        let permutations = PermutationGenerator::generate_permutations(grouped_panels);
+        println!("Сгенерировано перестановок: {}", permutations.len());
+
+        let mut best_solution = Solution::new();
+
+        // ЭТАП 4: Перебор перестановок и количества листов
+        for (perm_idx, permutation) in permutations.iter().enumerate() {
+            println!(
+                "Обработка перестановки {}/{}",
+                perm_idx + 1,
+                permutations.len()
+            );
+
+            // Пробуем разные количества листов
+            for sheet_count in 1..=self.max_sheets {
+                let solution = self.try_solution(permutation, sheet_count);
+
+                // Если все панели поместились - это хороший кандидат
+                if solution.unplaced_panels.is_empty() {
+                    if best_solution.placements.is_empty()
+                        || solution.score() < best_solution.score()
+                    {
+                        best_solution = solution;
+                        println!(
+                            "Найдено лучшее решение: {} листов, эффективность {:.1}%",
+                            sheet_count,
+                            best_solution.total_efficiency * 100.0
+                        );
+                    }
+                    break; // Переходим к следующей перестановке
+                }
+
+                // Если не все поместились, но это лучше предыдущего
+                if solution.score() < best_solution.score() {
+                    best_solution = solution;
+                }
+            }
+
+            // Если нашли идеальное решение - можем остановиться
+            if best_solution.unplaced_panels.is_empty() && best_solution.placements.len() == 1 {
+                println!("Найдено оптимальное решение на 1 листе!");
+                break;
+            }
+        }
+
+        best_solution.calculate_totals();
+        println!("=== Оптимизация завершена ===");
+        best_solution
+    }
+
+    /// Развертывание панелей по количеству
+    fn expand_panels(&self) -> Vec<Panel> {
+        let mut expanded = Vec::new();
+        for panel in &self.panels {
+            for i in 0..panel.count {
+                let mut new_panel = panel.clone();
+                new_panel.count = 1;
+                // Уникальный ID для каждой копии
+                new_panel.id = panel.id * 1000 + i;
+                expanded.push(new_panel);
+            }
+        }
+        expanded
+    }
+
+    /// Попытка решения с заданной перестановкой и количеством листов
+    /// TODO: Основная логика размещения
+    fn try_solution(&self, panels: &[Panel], sheet_count: usize) -> Solution {
+        let mut solution = Solution::new();
+        let mut remaining_panels = panels.to_vec();
+
+        // Создаем нужное количество листов
+        for sheet_id in 0..sheet_count {
+            let mut placement = Placement::new(&self.stock);
+            placement.stock_id = sheet_id as i32;
+
+            // Пытаемся разместить оставшиеся панели на этом листе
+            let placed_count = placement.try_place_panels(&remaining_panels, self.cut_thickness);
+
+            // Убираем размещенные панели из списка
+            remaining_panels.drain(0..placed_count);
+
+            solution.placements.push(placement);
+
+            // Если все панели размещены - отлично
+            if remaining_panels.is_empty() {
+                break;
+            }
+        }
+
+        solution.unplaced_panels = remaining_panels;
+        solution
+    }
+
+    /// Вывод результата
+    pub fn print_solution(&self, solution: &Solution) {
+        println!("\n=== Результат оптимизации ===");
+        println!(
+            "Общая использованная площадь: {:.2}",
+            solution.total_used_area as f64 / 100.0
+        );
+        println!(
+            "Общая потерянная площадь: {:.2}",
+            solution.total_waste_area as f64 / 100.0
+        );
+        println!(
+            "Коэффициент использования: {:.2}%",
+            solution.total_efficiency * 100.0
+        );
+        println!("Количество резов: {}", solution.total_cuts);
+        println!(
+            "Общая длина резов: {:.2}",
+            solution.total_cut_length as f64 / 10.0
+        );
+
+        println!("\n=== Мозаики (листы с раскроем) ===");
+        for (i, placement) in solution.placements.iter().enumerate() {
+            println!("Лист {}:", i + 1);
+            println!(
+                "  Использование: {:.2}% ({:.2}/{:.2})",
+                placement.efficiency * 100.0,
+                placement.used_area as f64 / 100.0,
+                (placement.used_area + placement.waste_area) as f64 / 100.0
+            );
+
+            for panel in &placement.placed_panels {
+                println!(
+                    "    {:.1}x{:.1} [{}]",
+                    panel.width as f64 / 10.0,
+                    panel.height as f64 / 10.0,
+                    panel.label
+                );
+            }
+        }
+
+        if solution.unplaced_panels.is_empty() {
+            println!("\n=== Все детали размещены успешно! ===");
+        } else {
+            println!("\n=== Неразмещенные детали ===");
+            for panel in &solution.unplaced_panels {
+                println!(
+                    "  {:.1}x{:.1} [{}]",
+                    panel.width as f64 / 10.0,
+                    panel.height as f64 / 10.0,
+                    panel.label
                 );
             }
         }
     }
-    
-    if !solution.no_fit_panels.is_empty() {
-        log_info!("\n=== Неразмещенные детали ===");
-        for no_fit in &solution.no_fit_panels {
-            log_info!("  {:.1}x{:.1} x{} [{}]",
-                no_fit.width,
-                no_fit.height,
-                no_fit.count,
-                no_fit.label.as_deref().unwrap_or("")
-            );
-        }
-    } else {
-        log_info!("\n=== Все детали размещены успешно! ===");
-    }
 }
 
-fn generate_html_visualization(solution: &CalculationResponse) -> Result<(), Box<dyn std::error::Error>> {
-    if solution.mosaics.is_empty() {
-        log_info!("Нет данных для визуализации");
-        return Ok(());
-    }
-    
-    let mut html = String::new();
-    html.push_str("<!DOCTYPE html>\n");
-    html.push_str("<html>\n");
-    html.push_str("<head>\n");
-    html.push_str("    <meta charset='UTF-8'>\n");
-    html.push_str("    <title>Результат раскроя</title>\n");
-    html.push_str("    <style>\n");
-    html.push_str("        body { font-family: Arial, sans-serif; margin: 20px; }\n");
-    html.push_str("        .mosaic { border: 2px solid #000; margin: 20px 0; position: relative; display: inline-block; }\n");
-    html.push_str("        .panel { position: absolute; border: 1px solid #333; text-align: center; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; }\n");
-    html.push_str("        .info { margin: 10px 0; }\n");
-    html.push_str("        .cuts { position: absolute; background: #ff0000; }\n");
-    html.push_str("        .cut-h { height: 1px; }\n");
-    html.push_str("        .cut-v { width: 1px; }\n");
-    html.push_str("        h2 { color: #333; }\n");
-    html.push_str("        .stats { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }\n");
-    html.push_str("    </style>\n");
-    html.push_str("</head>\n");
-    html.push_str("<body>\n");
-    html.push_str("    <h1>Результат оптимизации раскроя</h1>\n");
-    
-    // Общая статистика
-    html.push_str("    <div class='stats'>\n");
-    html.push_str("        <h3>Общая статистика:</h3>\n");
-    html.push_str(&format!("        <p>Общая использованная площадь: {:.2}</p>\n", solution.total_used_area));
-    html.push_str(&format!("        <p>Общая потерянная площадь: {:.2}</p>\n", solution.total_wasted_area));
-    html.push_str(&format!("        <p>Коэффициент использования: {:.2}%</p>\n", solution.total_used_area_ratio * 100.0));
-    html.push_str(&format!("        <p>Количество резов: {}</p>\n", solution.total_nbr_cuts));
-    html.push_str(&format!("        <p>Время выполнения: {} мс</p>\n", solution.elapsed_time));
-    html.push_str("    </div>\n");
-    
-    // Масштаб для визуализации (1 мм = 2 пикселя)
-    let scale = 2.0;
-    let colors = ["#FFB6C1", "#87CEEB", "#98FB98", "#F0E68C", "#DDA0DD", "#FFA07A", "#B0E0E6", "#FFEFD5"];
-    
-    for (i, mosaic) in solution.mosaics.iter().enumerate() {
-        html.push_str(&format!("    <h2>Лист {}</h2>\n", i + 1));
-        html.push_str("    <div class='info'>\n");
-        html.push_str(&format!("        Использованная площадь: {:.2}, Потери: {:.2} ({:.1}% использования)\n",
-            mosaic.used_area, mosaic.wasted_area, mosaic.used_area_ratio * 100.0));
-        html.push_str("    </div>\n");
-        
-        if !mosaic.tiles.is_empty() {
-            // Находим размеры листа
-            let max_x = mosaic.tiles.iter().map(|t| t.x + t.width).fold(0.0, f64::max);
-            let max_y = mosaic.tiles.iter().map(|t| t.y + t.height).fold(0.0, f64::max);
-            
-            html.push_str(&format!("    <div class='mosaic' style='width: {}px; height: {}px;'>\n",
-                (max_x * scale) as i32, (max_y * scale) as i32));
-            
-            let mut color_index = 0;
-            
-            // Отображаем финальные панели
-            for tile in &mosaic.tiles {
-                if tile.is_final {
-                    let color = colors[color_index % colors.len()];
-                    color_index += 1;
-                    
-                    html.push_str(&format!("        <div class='panel' style='"));
-                    html.push_str(&format!("left: {}px; ", (tile.x * scale) as i32));
-                    html.push_str(&format!("top: {}px; ", (tile.y * scale) as i32));
-                    html.push_str(&format!("width: {}px; ", (tile.width * scale) as i32));
-                    html.push_str(&format!("height: {}px; ", (tile.height * scale) as i32));
-                    html.push_str(&format!("background-color: {};'>\n", color));
-                    html.push_str(&format!("            {:.0}x{:.0}", tile.width, tile.height));
-                    
-                    if let Some(label) = &tile.label {
-                        html.push_str(&format!("<br>{}", label));
-                    }
-                    
-                    html.push_str("\n        </div>\n");
-                }
-            }
-            
-            // Отображаем резы
-            for cut in &mosaic.cuts {
-                if cut.is_horizontal {
-                    html.push_str(&format!("        <div class='cuts cut-h' style='"));
-                    html.push_str(&format!("left: {}px; ", (cut.x1 * scale) as i32));
-                    html.push_str(&format!("top: {}px; ", (cut.y1 * scale) as i32));
-                    html.push_str(&format!("width: {}px;'></div>\n", ((cut.x2 - cut.x1) * scale) as i32));
-                } else {
-                    html.push_str(&format!("        <div class='cuts cut-v' style='"));
-                    html.push_str(&format!("left: {}px; ", (cut.x1 * scale) as i32));
-                    html.push_str(&format!("top: {}px; ", (cut.y1 * scale) as i32));
-                    html.push_str(&format!("height: {}px;'></div>\n", ((cut.y2 - cut.y1) * scale) as i32));
-                }
-            }
-            
-            html.push_str("    </div>\n");
-        }
-        
-        // Список панелей в этой мозаике
-        if let Some(panels) = &mosaic.panels {
-            html.push_str("    <div class='info'>\n");
-            html.push_str("        <strong>Детали в листе:</strong><br>\n");
-            for panel in panels {
-                html.push_str(&format!("        • {:.0}x{:.0} (кол-во: {})", 
-                    panel.width, panel.height, panel.count));
-                if let Some(label) = &panel.label {
-                    html.push_str(&format!(" [{}]", label));
-                }
-                html.push_str("<br>\n");
-            }
-            html.push_str("    </div>\n");
-        }
-    }
-    
-    // Неразмещенные панели
-    if !solution.no_fit_panels.is_empty() {
-        html.push_str("    <div class='stats'>\n");
-        html.push_str("        <h3 style='color: #d00;'>Неразмещенные панели:</h3>\n");
-        for no_fit in &solution.no_fit_panels {
-            html.push_str(&format!("        • {:.0}x{:.0} (кол-во: {})", 
-                no_fit.width, no_fit.height, no_fit.count));
-            if let Some(label) = &no_fit.label {
-                html.push_str(&format!(" [{}]", label));
-            }
-            html.push_str("<br>\n");
-        }
-        html.push_str("    </div>\n");
-    }
-    
-    html.push_str("    <div class='info'>\n");
-    html.push_str("        <small>Масштаб: 1 мм = 2 пикселя. Красные линии - резы.</small>\n");
-    html.push_str("    </div>\n");
-    html.push_str("</body>\n");
-    html.push_str("</html>");
-    
-    // Записываем HTML в файл
-    std::fs::write("cutting_result.html", html)?;
-    
-    log_info!("\n=== HTML визуализация создана ===");
-    log_info!("Файл: cutting_result.html");
-    log_info!("Откройте файл в браузере для просмотра схемы раскроя");
-    
-    Ok(())
+// ============================================================================
+// ЭТАП 7: ПРИМЕР ИСПОЛЬЗОВАНИЯ
+// ============================================================================
+
+fn main() {
+    println!("=== Тест оптимизации раскроя ===");
+
+    // Создаем детали (размеры в мм * 10 для точности)
+    let panels = vec![
+        Panel::new(1, 1000, 500, 2, "Деталь_1"), // 100.0x50.0 мм, 2 шт
+        Panel::new(2, 800, 600, 1, "Деталь_2"),  // 80.0x60.0 мм, 1 шт
+    ];
+
+    // Заготовка (размеры в мм * 10)
+    let stock = Stock::new(1, 3000, 2000, "Заготовка_1"); // 300.0x200.0 мм
+
+    // Создаем оптимизатор
+    let optimizer = CuttingOptimizer::new(panels, stock);
+
+    // Запускаем оптимизацию
+    let solution = optimizer.optimize();
+
+    // Выводим результат
+    optimizer.print_solution(&solution);
 }
