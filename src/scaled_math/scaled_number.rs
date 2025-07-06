@@ -75,6 +75,66 @@ impl ScaledNumber {
         })
     }
 
+    /// Создает из сырого значения (уже масштабированного) и точности
+    pub fn from_raw(raw_value: i64, precision: u8) -> Result<Self, ScaledError> {
+        if precision > Self::MAX_PRECISION {
+            return Err(ScaledError::InvalidPrecision(precision));
+        }
+
+        let scale = 10_i64.pow(precision as u32);
+        Ok(Self {
+            value: raw_value,
+            precision,
+            scale,
+        })
+    }
+
+    /// Создает из сырого значения u32 и точности
+    pub fn from_raw_u32(raw_value: u32, precision: u8) -> Result<Self, ScaledError> {
+        if precision > Self::MAX_PRECISION {
+            return Err(ScaledError::InvalidPrecision(precision));
+        }
+
+        let scale = 10_i64.pow(precision as u32);
+        Ok(Self {
+            value: raw_value as i64,
+            precision,
+            scale,
+        })
+    }
+
+    /// Создает из сырого значения u64 и точности
+    pub fn from_raw_u64(raw_value: u64, precision: u8) -> Result<Self, ScaledError> {
+        if precision > Self::MAX_PRECISION {
+            return Err(ScaledError::InvalidPrecision(precision));
+        }
+
+        if raw_value > i64::MAX as u64 {
+            return Err(ScaledError::ValueTooLarge);
+        }
+
+        let scale = 10_i64.pow(precision as u32);
+        Ok(Self {
+            value: raw_value as i64,
+            precision,
+            scale,
+        })
+    }
+
+    /// Создает из сырого значения i32 и точности
+    pub fn from_raw_i32(raw_value: i32, precision: u8) -> Result<Self, ScaledError> {
+        if precision > Self::MAX_PRECISION {
+            return Err(ScaledError::InvalidPrecision(precision));
+        }
+
+        let scale = 10_i64.pow(precision as u32);
+        Ok(Self {
+            value: raw_value as i64,
+            precision,
+            scale,
+        })
+    }
+
     /// Создает из f32 с заданной точностью
     pub fn from_f32(value: f32, precision: u8) -> Result<Self, ScaledError> {
         if precision > Self::MAX_PRECISION {
@@ -149,6 +209,42 @@ impl ScaledNumber {
         })
     }
 
+    /// Создает из i32
+    pub fn from_i32(value: i32, precision: u8) -> Result<Self, ScaledError> {
+        if precision > Self::MAX_PRECISION {
+            return Err(ScaledError::InvalidPrecision(precision));
+        }
+
+        let scale = 10_i64.pow(precision as u32);
+        let scaled_value = (value as i64)
+            .checked_mul(scale)
+            .ok_or(ScaledError::Overflow)?;
+
+        Ok(Self {
+            value: scaled_value,
+            precision,
+            scale,
+        })
+    }
+
+    /// Создает из i64
+    pub fn from_i64(value: i64, precision: u8) -> Result<Self, ScaledError> {
+        if precision > Self::MAX_PRECISION {
+            return Err(ScaledError::InvalidPrecision(precision));
+        }
+
+        let scale = 10_i64.pow(precision as u32);
+        let scaled_value = value
+            .checked_mul(scale)
+            .ok_or(ScaledError::Overflow)?;
+
+        Ok(Self {
+            value: scaled_value,
+            precision,
+            scale,
+        })
+    }
+
     /// Создает из строки с автоматическим определением точности
     pub fn from_str_auto(s: &str) -> Result<Self, ScaledError> {
         let s = s.trim();
@@ -213,6 +309,23 @@ impl ScaledNumber {
         Ok(integer_value as u64)
     }
 
+    /// Преобразует в i32
+    pub fn to_i32(&self) -> Result<i32, ScaledError> {
+        let integer_value = self.value / self.scale;
+
+        if integer_value > i32::MAX as i64 || integer_value < i32::MIN as i64 {
+            return Err(ScaledError::ValueTooLarge);
+        }
+
+        Ok(integer_value as i32)
+    }
+
+    /// Преобразует в i64
+    pub fn to_i64(&self) -> Result<i64, ScaledError> {
+        let integer_value = self.value / self.scale;
+        Ok(integer_value)
+    }
+
     /// Преобразует в u32 с округлением
     pub fn to_u32_rounded(&self) -> Result<u32, ScaledError> {
         if self.value < 0 {
@@ -238,8 +351,70 @@ impl ScaledNumber {
         Ok(rounded_value as u64)
     }
 
+    /// Преобразует в i32 с округлением
+    pub fn to_i32_rounded(&self) -> Result<i32, ScaledError> {
+        let rounded_value = if self.value >= 0 {
+            (self.value + self.scale / 2) / self.scale
+        } else {
+            (self.value - self.scale / 2) / self.scale
+        };
+
+        if rounded_value > i32::MAX as i64 || rounded_value < i32::MIN as i64 {
+            return Err(ScaledError::ValueTooLarge);
+        }
+
+        Ok(rounded_value as i32)
+    }
+
+    /// Преобразует в i64 с округлением
+    pub fn to_i64_rounded(&self) -> Result<i64, ScaledError> {
+        let rounded_value = if self.value >= 0 {
+            (self.value + self.scale / 2) / self.scale
+        } else {
+            (self.value - self.scale / 2) / self.scale
+        };
+
+        Ok(rounded_value)
+    }
+
     /// Возвращает внутреннее целое значение
     pub fn raw_value(&self) -> i64 {
+        self.value
+    }
+
+    /// Возвращает raw значение как u32 (если возможно)
+    pub fn raw_value_u32(&self) -> Result<u32, ScaledError> {
+        if self.value < 0 {
+            return Err(ScaledError::NegativeToUnsigned);
+        }
+
+        if self.value > u32::MAX as i64 {
+            return Err(ScaledError::ValueTooLarge);
+        }
+
+        Ok(self.value as u32)
+    }
+
+    /// Возвращает raw значение как u64 (если возможно)
+    pub fn raw_value_u64(&self) -> Result<u64, ScaledError> {
+        if self.value < 0 {
+            return Err(ScaledError::NegativeToUnsigned);
+        }
+
+        Ok(self.value as u64)
+    }
+
+    /// Возвращает raw значение как i32 (если возможно)
+    pub fn raw_value_i32(&self) -> Result<i32, ScaledError> {
+        if self.value > i32::MAX as i64 || self.value < i32::MIN as i64 {
+            return Err(ScaledError::ValueTooLarge);
+        }
+
+        Ok(self.value as i32)
+    }
+
+    /// Возвращает raw значение как i64
+    pub fn raw_value_i64(&self) -> i64 {
         self.value
     }
 
@@ -273,7 +448,11 @@ impl ScaledNumber {
         } else {
             // Уменьшаем точность (округляем)
             let factor = 10_i64.pow((self.precision - new_precision) as u32);
-            (self.value + factor / 2) / factor
+            if self.value >= 0 {
+                (self.value + factor / 2) / factor
+            } else {
+                (self.value - factor / 2) / factor
+            }
         };
 
         Ok(Self {
@@ -387,7 +566,7 @@ impl ScaledNumber {
     /// Безопасное деление с обработкой ошибок
     pub fn checked_div(self, other: Self) -> Result<Self, ScaledError> {
         if other.value == 0 {
-            return Err(ScaledError::Overflow); // Division by zero
+            return Err(ScaledError::DivisionByZero);
         }
 
         let (left, right) = self.align_precision(&other)?;
