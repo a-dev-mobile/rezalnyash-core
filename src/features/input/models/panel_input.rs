@@ -9,12 +9,12 @@ pub struct PanelInput {
     pub id: u16,
     pub width: String,
     pub height: String,
-    pub count: u8,
+    pub count: u16,
     pub label: String,
 }
 
 impl PanelInput {
-    pub fn new(id: u16, width: &str, height: &str, count: u8, label: &str) -> Self {
+    pub fn new(id: u16, width: &str, height: &str, count: u16, label: &str) -> Self {
         Self {
             id,
             width: width.to_string(),

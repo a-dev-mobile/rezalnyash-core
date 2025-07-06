@@ -15,8 +15,8 @@ fn main() {
 
     // Создаем детали - аналогично Java коду
     let panels_input: Vec<PanelInput> = vec![
-        PanelInput::new(1, "150.5", "100.25", 20, "Деталь_1"),
-        PanelInput::new(2, "80.75", "60.5", 30, "Деталь_2"),
+        PanelInput::new(1, "150.5", "100.25", 2, "Деталь_1"),
+        PanelInput::new(2, "80.75", "60.5", 3, "Деталь_2"),
         PanelInput::new(3, "120.0", "45.75", 1, "Деталь_3"),
         PanelInput::new(4, "95.25", "75.5", 2, "Деталь_4"),
         PanelInput::new(5, "65.5", "85.25", 1, "Деталь_5"),
