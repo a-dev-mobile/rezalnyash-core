@@ -1,9 +1,6 @@
 use crate::{
     features::{
-        input::models::{panel::Panel, panel_instance::PanelInstance, stock::Stock},
-        permutation_generator::PermutationGenerator,
-        placement::Placement,
-        solution::Solution,
+        input::models::{panel::Panel, panel_instance::PanelInstance, stock::Stock}, panel_grouper::panel_grouper::PanelGrouper, permutation_generator::permutation_generator::PermutationGenerator, placement::Placement, solution::Solution
     },
     utils::json::save_to_json,
 };
@@ -37,28 +34,31 @@ impl CuttingOptimizer {
             self.stock[0].height
         );
 
-        save_to_json(&self.panels, "_base_panels.json").unwrap();
-       
+        // Сохраняем исходные данные для отладки
+        save_to_json(&self.panels, "_base_panels.json");
+
         // ЭТАП 1: Развернуть панели по количеству и повороту
         let expanded_panels = self.expand_panels();
         println!("Развернуто панелей: {}", expanded_panels.len());
-        save_to_json(&expanded_panels, "_expanded_panels.json").unwrap();
-       
+        save_to_json(&expanded_panels, "_expanded_panels.json");
+
         // ЭТАП 2: Сгруппировать панели для оптимизации перестановок
-        let grouped_panels = PermutationGenerator::group_panels(&expanded_panels);
+        let grouped_panels = PanelGrouper::group_panels(&expanded_panels);
         println!("Создано групп: {}", grouped_panels.len());
-        save_to_json(&grouped_panels, "_grouped_panels.json").unwrap();
+        PanelGrouper::print_grouping_stats(&grouped_panels);
+        save_to_json(&grouped_panels, "_grouped_panels.json");
 
-        PermutationGenerator::print_grouping_stats(&grouped_panels);
-
-        // ЭТАП 3: Генерировать перестановки
+        // ЭТАП 3: Преобразуем группы обратно в плоский список для перестановок
+        let flat_panels = PanelGrouper::flatten_groups(&grouped_panels);
+        
+        // ЭТАП 4: Генерировать перестановки
         println!("Генерация перестановок...");
-        let permutations = PermutationGenerator::generate_permutations(grouped_panels);
-        println!("Сгенерировано перестановок: {}", permutations.len());
+        let permutations = PermutationGenerator::generate_all_permutations(flat_panels);
+        PermutationGenerator::print_permutation_stats(&permutations);
 
         let mut best_solution = Solution::new();
 
-        // ЭТАП 4: Перебор перестановок и количества листов
+        // ЭТАП 5: Перебор перестановок и количества листов
         for (perm_idx, permutation) in permutations.iter().enumerate() {
             println!(
                 "Обработка перестановки {}/{}",
@@ -204,14 +204,7 @@ impl CuttingOptimizer {
             println!("\n=== Все детали размещены успешно! ===");
         } else {
             println!("\n=== Неразмещенные детали ===");
-            for panel in &solution.unplaced_panels {
-                // println!(
-                //     "  {:.1}x{:.1} [{}]",
-                //     panel.width as f64 / 10.0,
-                //     panel.height as f64 / 10.0,
-                //     panel.label
-                // );
-            }
+            println!("Количество: {}", solution.unplaced_panels.len());
         }
     }
 }
