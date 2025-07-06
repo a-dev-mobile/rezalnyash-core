@@ -3,6 +3,9 @@
 
 use std::collections::HashMap;
 
+use rezalnyas_core::save_to_json::save_to_json::save_to_json;
+use serde::Serialize;
+
 // ============================================================================
 // ЭТАП 1: БАЗОВЫЕ СТРУКТУРЫ ДАННЫХ
 // ============================================================================
@@ -36,7 +39,7 @@ impl Rectangle {
 }
 
 /// Деталь для размещения
-#[derive(Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Panel {
     pub id: i32,
     pub width: i32,
@@ -517,10 +520,10 @@ impl CuttingOptimizer {
         // ЭТАП 1: Развернуть панели по количеству
         let expanded_panels = self.expand_panels();
         println!("Развернуто панелей: {}", expanded_panels.len());
-
+        save_to_json(&expanded_panels, "expanded_panels.json");
         // ЭТАП 2: Сгруппировать панели для оптимизации перестановок
         let grouped_panels = PermutationGenerator::group_panels(&expanded_panels);
-
+        save_to_json(&grouped_panels, "grouped_panels.json");
         // ЭТАП 3: Генерировать перестановки
         println!("Генерация перестановок...");
         let permutations = PermutationGenerator::generate_permutations(grouped_panels);
