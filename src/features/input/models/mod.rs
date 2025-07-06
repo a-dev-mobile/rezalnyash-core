@@ -2,8 +2,8 @@
 
 pub mod panel_input;
 pub mod panel;
-pub mod panel_instance;
-pub mod panel_group;
+pub mod tile_dimensions;
+pub mod grouped_tile_dimensions;
 
 pub mod stock_input;
 pub mod stock;

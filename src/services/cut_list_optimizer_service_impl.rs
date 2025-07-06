@@ -595,8 +595,7 @@ impl CutListOptimizerServiceImpl {
         Ok(())
     }
 
-
-/// Main computation entry point - с использованием ScaledNumber
+    /// Main computation entry point - с использованием ScaledNumber
     fn compute(&self, request: CalculationRequest, task_id: String) -> Result<()> {
         log_debug!("Starting computation for task: {}", task_id);
 
@@ -768,11 +767,10 @@ impl CutListOptimizerServiceImpl {
             stock_tiles.len()
         );
 
-
-        /* 
+        /*
         task.buildSolution();
         this.runningTasks.addTask(task);
-        
+
          */
         // Строим начальное решение
         task.build_solution();
@@ -887,7 +885,7 @@ impl CutListOptimizerServiceImpl {
 
         // Создаем копию списка материалов для итерации
         let materials_list: Vec<String> = materials_to_process.iter().cloned().collect();
-        
+
         // Обрабатываем каждый материал в отдельном потоке
         for material in materials_list {
             let tiles_for_material = material_tiles.get(&material).unwrap().clone();
@@ -929,24 +927,24 @@ impl CutListOptimizerServiceImpl {
         // Ждем завершения всех потоков обработки материалов
         // Это необходимо, так как материалы обрабатываются в отдельных потоках
         thread::sleep(Duration::from_millis(500));
-        
+
         // Создаем копию списка материалов для использования в финальной проверке
         let materials_list: Vec<String> = materials_to_process.iter().cloned().collect();
-        
+
         // Еще раз проверяем статус задачи после небольшой задержки
         {
             let mut task_guard = task_arc.lock().map_err(|_| TaskError::TaskLockError {
                 operation: "final_check".to_string(),
             })?;
-            
+
             // Устанавливаем 100% для всех материалов, чтобы гарантировать завершение
             for material in &materials_list {
                 task_guard.set_material_percentage_done(material.clone(), 100);
             }
-            
+
             // Принудительно проверяем завершение
             task_guard.check_if_finished();
-            
+
             // Если задача все еще выполняется, принудительно завершаем
             if task_guard.status == Status::Running {
                 log_info!("Принудительное завершение задачи после обработки всех материалов");
@@ -955,7 +953,7 @@ impl CutListOptimizerServiceImpl {
                     .duration_since(UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis() as u64;
-                
+
                 if task_guard.solution.is_none() {
                     task_guard.build_solution();
                 }
@@ -975,16 +973,23 @@ impl CutListOptimizerServiceImpl {
         permutation_idx: usize,
         stock_idx: usize,
     ) -> Result<()> {
-        log_debug!("Processing permutation[{}/∞] with stock solution [{}] {{nbrPanels[{}] area[{}]}}",
-                  permutation_idx, stock_idx, stock_solution.len(), stock_solution.get_total_area());
+        log_debug!(
+            "Processing permutation[{}/∞] with stock solution [{}] {{nbrPanels[{}] area[{}]}}",
+            permutation_idx,
+            stock_idx,
+            stock_solution.len(),
+            stock_solution.get_total_area()
+        );
 
         // Parse cut thickness
-        let cut_thickness = configuration.cut_thickness()
+        let cut_thickness = configuration
+            .cut_thickness()
             .and_then(|ct| ct.parse::<f64>().ok())
             .unwrap_or(0.0);
 
-        // Parse min trim dimension  
-        let min_trim_dimension = configuration.min_trim_dimension()
+        // Parse min trim dimension
+        let min_trim_dimension = configuration
+            .min_trim_dimension()
             .and_then(|mtd| mtd.parse::<f64>().ok())
             .unwrap_or(0.0);
 
@@ -1002,17 +1007,17 @@ impl CutListOptimizerServiceImpl {
         // Simulate cutting optimization process
         let mut successful_placements = 0;
         let mut total_used_area = 0.0;
-        
+
         // Simple simulation - try to place each tile
         for (tile_idx, tile) in tiles.iter().enumerate() {
             // Check if we can fit this tile in any stock panel
             let tile_area = tile.area() as f64;
-            
+
             if tile_area <= stock_solution.get_total_area() as f64 {
                 successful_placements += 1;
                 total_used_area += tile_area;
             }
-            
+
             // Simulate some processing time
             if tile_idx % 5 == 0 {
                 thread::sleep(Duration::from_millis(1));
@@ -1026,15 +1031,19 @@ impl CutListOptimizerServiceImpl {
             0.0
         };
 
-        log_debug!("Placed {}/{} tiles with efficiency {:.2}%", 
-                  successful_placements, tiles.len(), efficiency * 100.0);
+        log_debug!(
+            "Placed {}/{} tiles with efficiency {:.2}%",
+            successful_placements,
+            tiles.len(),
+            efficiency * 100.0
+        );
 
         // Update task with progress (simplified)
         {
             let task_guard = task.lock().map_err(|_| CoreError::Internal {
                 message: "Failed to lock task".to_string(),
             })?;
-            
+
             // Increment thread group rankings for successful placements
             if successful_placements > tiles.len() / 2 {
                 task_guard.increment_thread_group_rankings(material, "AREA");
@@ -1043,9 +1052,6 @@ impl CutListOptimizerServiceImpl {
 
         Ok(())
     }
-
-
-
 
     /// Convert grouped tiles back to regular tiles
     fn grouped_tiles_to_tiles(
@@ -1104,11 +1110,6 @@ impl CutListOptimizerServiceImpl {
             // Check if we should split to a new group
             if let Some(&total_count) = tile_counts.get(&tile_key) {
                 if total_count > max_per_group && *count_in_group > total_count / 4 {
-                    log_debug!(
-                        "Splitting panel set [{}] with [{}] units into groups",
-                        tile_key,
-                        total_count
-                    );
                     current_group += 1;
                 }
             }
@@ -1116,8 +1117,6 @@ impl CutListOptimizerServiceImpl {
 
         Ok(result)
     }
-
-    
 }
 
 impl Clone for CutListOptimizerServiceImpl {

@@ -6,7 +6,7 @@ use crate::features::{input::traits::dimensions::Dimensions};
 // 1. ВХОДНАЯ МОДЕЛЬ - то что приходит от пользователя
 #[derive(Serialize, Debug, Clone)]
 pub struct PanelInput {
-    pub id: Uuid,
+    pub id: u16,
     pub width: String,
     pub height: String,
     pub count: u8,
@@ -14,9 +14,9 @@ pub struct PanelInput {
 }
 
 impl PanelInput {
-    pub fn new(width: &str, height: &str, count: u8, label: &str) -> Self {
+    pub fn new(id: u16, width: &str, height: &str, count: u8, label: &str) -> Self {
         Self {
-            id: Uuid::new_v4(),
+            id,
             width: width.to_string(),
             height: height.to_string(),
             count,

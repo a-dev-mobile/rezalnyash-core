@@ -1,6 +1,10 @@
 use crate::{
     features::{
-        input::models::{panel::Panel, panel_instance::PanelInstance, stock::Stock}, panel_grouper::panel_grouper::PanelGrouper, permutation_generator::permutation_generator::PermutationGenerator, placement::Placement, solution::Solution
+        input::models::{panel::Panel, stock::Stock, tile_dimensions::TileDimensions},
+        panel_grouper::panel_grouper::PanelGrouper,
+        permutation_generator::permutation_generator::PermutationGenerator,
+        placement::Placement,
+        solution::Solution,
     },
     utils::json::save_to_json,
 };
@@ -8,7 +12,7 @@ use crate::{
 /// Главный класс оптимизатора
 pub struct CuttingOptimizer {
     pub panels: Vec<Panel>,
-    pub stock: Vec<Stock>,
+    pub stocks: Vec<Stock>,
     pub cut_thickness: i32,
     pub max_sheets: usize,
 }
@@ -17,7 +21,7 @@ impl CuttingOptimizer {
     pub fn new(panels: Vec<Panel>, stock: Vec<Stock>) -> Self {
         Self {
             panels,
-            stock,
+            stocks: stock,
             cut_thickness: 0, // Толщина реза (обычно 0)
             max_sheets: 10,   // Максимум листов для перебора
         }
@@ -30,96 +34,98 @@ impl CuttingOptimizer {
         println!(
             "Деталей: {}, Заготовка: {}x{}",
             self.panels.len(),
-            self.stock[0].width,
-            self.stock[0].height
+            self.stocks[0].width,
+            self.stocks[0].height
         );
 
         // Сохраняем исходные данные для отладки
         save_to_json(&self.panels, "_base_panels.json").unwrap();
 
-        // ЭТАП 1: Развернуть панели по количеству и повороту
-        let expanded_panels = self.expand_panels();
-        println!("Развернуто панелей: {}", expanded_panels.len());
-        save_to_json(&expanded_panels, "_expanded_panels.json").unwrap();
+        // ЭТАП 1: Развернуть панели по количеству
+        let panels_expanded_tiles = self.expand_panels();
+
+        println!("Развернуто панелей: {}", panels_expanded_tiles.len());
+        save_to_json(&panels_expanded_tiles, "_expanded_panels.json").unwrap();
+
+        let stock_tiles: Vec<TileDimensions> = self.stocks
+            .iter()
+            .map(|stock| stock.to_tile_dimensions())
+            .collect();
 
         // ЭТАП 2: Сгруппировать панели для оптимизации перестановок
-        let grouped_panels = PanelGrouper::group_panels(&expanded_panels);
+        let grouped_panels = PanelGrouper::group_panels(&panels_expanded_tiles, &stock_tiles);
+
         println!("Создано групп: {}", grouped_panels.len());
-        PanelGrouper::print_grouping_stats(&grouped_panels);
+
+        for grouped_panel in &grouped_panels {
+            println!("{}", grouped_panel);
+        }
+        // PanelGrouper::print_grouping_stats(&grouped_panels);
         save_to_json(&grouped_panels, "_grouped_panels.json").unwrap();
 
+        // // ЭТАП 4: Генерировать перестановки
+        // println!("Генерация перестановок...");
+        // let permutations = PermutationGenerator::generate_all_permutations(flat_panels);
+        // PermutationGenerator::print_permutation_stats(&permutations);
 
+        // let mut best_solution = Solution::new();
 
-        
-        // ЭТАП 3: Преобразуем группы обратно в плоский список для перестановок
-        let flat_panels = PanelGrouper::flatten_groups(&grouped_panels);
-        
+        // // ЭТАП 5: Перебор перестановок и количества листов
+        // for (perm_idx, permutation) in permutations.iter().enumerate() {
+        //     println!(
+        //         "Обработка перестановки {}/{}",
+        //         perm_idx + 1,
+        //         permutations.len()
+        //     );
 
+        //     // Пробуем разные количества листов
+        //     for sheet_count in 1..=self.max_sheets {
+        //         let solution = self.try_solution(permutation, sheet_count);
 
+        //         // Если все панели поместились - это хороший кандидат
+        //         if solution.unplaced_panels.is_empty() {
+        //             if best_solution.placements.is_empty()
+        //                 || solution.score() < best_solution.score()
+        //             {
+        //                 best_solution = solution;
+        //                 println!(
+        //                     "Найдено лучшее решение: {} листов, эффективность {:.1}%",
+        //                     sheet_count,
+        //                     best_solution.total_efficiency * 100.0
+        //                 );
+        //             }
+        //             break; // Переходим к следующей перестановке
+        //         }
 
+        //         // Если не все поместились, но это лучше предыдущего
+        //         if solution.score() < best_solution.score() {
+        //             best_solution = solution;
+        //         }
+        //     }
 
-        // ЭТАП 4: Генерировать перестановки
-        println!("Генерация перестановок...");
-        let permutations = PermutationGenerator::generate_all_permutations(flat_panels);
-        PermutationGenerator::print_permutation_stats(&permutations);
+        //     // Если нашли идеальное решение - можем остановиться
+        //     if best_solution.unplaced_panels.is_empty() && best_solution.placements.len() == 1 {
+        //         println!("Найдено оптимальное решение на 1 листе!");
+        //         break;
+        //     }
+        // }
 
-        let mut best_solution = Solution::new();
-
-        // ЭТАП 5: Перебор перестановок и количества листов
-        for (perm_idx, permutation) in permutations.iter().enumerate() {
-            println!(
-                "Обработка перестановки {}/{}",
-                perm_idx + 1,
-                permutations.len()
-            );
-
-            // Пробуем разные количества листов
-            for sheet_count in 1..=self.max_sheets {
-                let solution = self.try_solution(permutation, sheet_count);
-
-                // Если все панели поместились - это хороший кандидат
-                if solution.unplaced_panels.is_empty() {
-                    if best_solution.placements.is_empty()
-                        || solution.score() < best_solution.score()
-                    {
-                        best_solution = solution;
-                        println!(
-                            "Найдено лучшее решение: {} листов, эффективность {:.1}%",
-                            sheet_count,
-                            best_solution.total_efficiency * 100.0
-                        );
-                    }
-                    break; // Переходим к следующей перестановке
-                }
-
-                // Если не все поместились, но это лучше предыдущего
-                if solution.score() < best_solution.score() {
-                    best_solution = solution;
-                }
-            }
-
-            // Если нашли идеальное решение - можем остановиться
-            if best_solution.unplaced_panels.is_empty() && best_solution.placements.len() == 1 {
-                println!("Найдено оптимальное решение на 1 листе!");
-                break;
-            }
-        }
-
-        best_solution.calculate_totals();
-        println!("=== Оптимизация завершена ===");
-        best_solution
+        // best_solution.calculate_totals();
+        // println!("=== Оптимизация завершена ===");
+        // best_solution
+        Solution::new() // Возвращаем пустое решение для примера
     }
 
-    /// Развертывание панелей по количеству и повороту
-    fn expand_panels(&self) -> Vec<PanelInstance> {
+    /// Развертывание панелей по количеству
+    fn expand_panels(&self) -> Vec<TileDimensions> {
         let mut instances = Vec::new();
 
         for panel in &self.panels {
             for i in 0..panel.count {
                 let instance_number = i + 1;
 
-                // Создаем базовый экземпляр (без поворота)
-                let base_instance = PanelInstance::new(
+                // Создаем базовый экземпляр
+                let base_instance = TileDimensions::new(
                     panel.width,
                     panel.height,
                     panel.original_id,
@@ -128,18 +134,13 @@ impl CuttingOptimizer {
                 );
 
                 instances.push(base_instance.clone());
-
-                // Добавляем повернутую версию только если панель не квадратная
-                if !panel.is_square() {
-                    instances.push(base_instance.create_rotated());
-                }
             }
         }
         instances
     }
     /// Попытка решения с заданной перестановкой и количеством листов
     /// TODO: Основная логика размещения
-    fn try_solution(&self, panels: &[PanelInstance], sheet_count: usize) -> Solution {
+    fn try_solution(&self, panels: &[TileDimensions], sheet_count: usize) -> Solution {
         let mut solution = Solution::new();
         let mut remaining_panels = panels.to_vec();
 

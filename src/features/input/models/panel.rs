@@ -8,11 +8,11 @@ pub struct Panel {
     pub height: u32,
     pub count: u8,
     pub label: String,
-    pub original_id: Uuid,
+    pub original_id: u16,
 }
 
 impl Panel {
-   pub fn new(width: u32, height: u32, count: u8, label: String, original_id: Uuid) -> Self {
+   pub fn new(width: u32, height: u32, count: u8, label: String, original_id: u16) -> Self {
         Self {
             width,
             height,

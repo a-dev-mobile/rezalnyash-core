@@ -1,122 +1,127 @@
 // features/panel_grouper.rs
-use crate::features::input::models::{panel_group::PanelGroup, panel_instance::PanelInstance};
+use crate::features::input::models::{
+    grouped_tile_dimensions::GroupedTileDimensions, tile_dimensions::TileDimensions,
+};
 
 use std::collections::HashMap;
 
-/// Отвечает за группировку панелей по размерам (с нормализацией)
+/// Отвечает за группировку панелей по размерам (точная копия Java generateGroups)
 pub struct PanelGrouper;
 
 impl PanelGrouper {
-    /// Группирует панели аналогично Java методу generateGroups
-    pub fn group_panels(panels: &[PanelInstance]) -> Vec<PanelGroup> {
-        // Подсчет количества каждого уникального размера
-        let mut size_counts: HashMap<String, u32> = HashMap::new();
-        for panel in panels {
-            // Используем нормализованные размеры (больший размер как ширина)
-            let (width, height) = Self::normalize_dimensions(panel.width, panel.height);
-            let size_key = format!("{}x{}", width, height);
-            *size_counts.entry(size_key).or_insert(0) += 1;
+    /// Check if optimization is one-dimensional
+    fn is_one_dimensional_optimization(tiles: &[TileDimensions], stock_tiles: &[TileDimensions]) -> bool {
+        if tiles.is_empty() {
+            return false;
         }
 
-        // Определяем максимальное количество панелей в группе
-        let max_group_size = (panels.len() / 100).max(1) as u32;
+        // Initialize with first tile's dimensions
+        let mut common_dimensions = vec![tiles[0].width, tiles[0].height];
 
-        // Группируем панели с разбиением больших групп
-        let mut groups: Vec<PanelGroup> = Vec::new();
-        let mut group_counters: HashMap<String, u32> = HashMap::new();
-        let mut current_group_id = 0u8;
+        // Process all tiles
+        for tile in tiles {
+            let mut surviving_dimensions = Vec::new();
 
-        for panel in panels {
-            let (width, height) = Self::normalize_dimensions(panel.width, panel.height);
-            let size_key = format!("{}x{}", width, height);
-            let total_count = size_counts[&size_key];
-            
-            // Получаем текущий счетчик для этого размера
-            let current_count = group_counters.entry(size_key.clone()).or_insert(0);
-            *current_count += 1;
-
-            // Проверяем, нужно ли создать новую группу
-            let should_split = total_count > max_group_size && 
-                             *current_count > total_count / 4;
-
-            // Создаем новую группу или добавляем в последнюю
-            if groups.is_empty() || 
-               groups.last().unwrap().width != width || 
-               groups.last().unwrap().height != height || 
-               should_split {
-                
-                current_group_id += 1;
-                let mut new_group = PanelGroup::new(width, height, current_group_id);
-                new_group.add_instance(panel.clone());
-                groups.push(new_group);
-                
-                if should_split {
-                    *current_count = 1; // Сброс счетчика для новой группы
+            for &dim in &common_dimensions {
+                if dim == tile.width || dim == tile.height {
+                    surviving_dimensions.push(dim);
                 }
-            } else {
-                // Добавляем в последнюю группу того же размера
-                if let Some(last_group) = groups.last_mut() {
-                    last_group.add_instance(panel.clone());
-                }
+            }
+
+            common_dimensions = surviving_dimensions;
+
+            // Early exit if no common dimensions remain
+            if common_dimensions.is_empty() {
+                return false;
             }
         }
 
-        // Сортируем группы по убыванию площади
-        groups.sort_by(|a, b| {
-            let area_a = a.width * a.height;
-            let area_b = b.width * b.height;
-            area_b.cmp(&area_a)
-        });
+        // Process stock tiles
+        for tile in stock_tiles {
+            let mut surviving_dimensions = Vec::new();
 
-        // Переназначаем ID после сортировки
-        for (index, group) in groups.iter_mut().enumerate() {
-            group.id = (index + 1) as u8;
+            for &dim in &common_dimensions {
+                if dim == tile.width || dim == tile.height {
+                    surviving_dimensions.push(dim);
+                }
+            }
+
+            common_dimensions = surviving_dimensions;
+
+            // Early exit if no common dimensions remain
+            if common_dimensions.is_empty() {
+                return false;
+            }
         }
 
-        groups
+        !common_dimensions.is_empty()
     }
 
-    /// Нормализует размеры - больший размер всегда ширина
-    fn normalize_dimensions(width: u32, height: u32) -> (u32, u32) {
-        if width >= height {
-            (width, height)
-        } else {
-            (height, width)
+    /// Группирует панели - точная копия Java логики generateGroups
+    pub fn group_panels(tiles: &[TileDimensions], stock_tiles: &[TileDimensions]) -> Vec<GroupedTileDimensions> {
+        if tiles.is_empty() {
+            return Vec::new();
         }
-    }
 
-    /// Разворачивает группы в плоский список панелей
-    pub fn flatten_groups(groups: &[PanelGroup]) -> Vec<PanelInstance> {
+        // Шаг 1: Подсчет количества каждого типа панели (map в Java)
+        let mut tile_counts = HashMap::new();
+        for tile in tiles {
+            let key = tile.to_string(); // используем toString() как в Java
+            let count = tile_counts.entry(key).or_insert(0);
+            *count += 1;
+        }
+
+        // Логирование статистики панелей
+        let mut sb = String::new();
+        for (tile_type, count) in &tile_counts {
+            sb.push_str(&format!("{}*{} ", tile_type, count));
+        }
+        println!("TotalNbrTiles[{}] Tiles: {}", tiles.len(), sb);
+
+        // Шаг 2: Определение порога для разбивки (iMax в Java)
+        let mut max_group_size = std::cmp::max(tiles.len() / 100, 1);
+
+        // Шаг 3: Проверка одномерной оптимизации
+        if Self::is_one_dimensional_optimization(tiles, stock_tiles) {
+        
+            max_group_size = 1;
+        }
+
+        // Шаг 4: Группировка панелей - точная копия Java логики
         let mut result = Vec::new();
-        for group in groups {
-            result.extend(group.get_all_instances().iter().cloned());
+        let mut current_group = 0; // переменная i в Java
+        let mut group_counts = HashMap::new(); // map2 в Java
+
+        for tile in tiles {
+            let tile_key = tile.to_string();
+            let group_key = format!("{}{}", tile_key, current_group); // str2 в Java
+
+            // Увеличиваем счетчик для данной группы (точная копия Java логики map2.put)
+            let group_count = group_counts.entry(group_key.clone()).or_insert(0);
+            *group_count += 1;
+
+            // Добавляем панель в текущую группу
+            result.push(GroupedTileDimensions::from_tile_dimension(
+                tile.clone(),
+                current_group as u8,
+            ));
+
+            // Проверяем условие разбивки ПОСЛЕ добавления панели (точная копия Java логики)
+            let total_for_tile_type = tile_counts.get(&tile_key).unwrap_or(&0);
+            
+            // Точная копия Java условия:
+            // ((Integer) map.get(tileDimensions.toString())).intValue() > iMax && 
+            // ((Integer) map2.get(str2)).intValue() > ((Integer) map.get(tileDimensions.toString())).intValue() / 4
+            if *total_for_tile_type > max_group_size && *group_count > (*total_for_tile_type / 4) {
+              
+                current_group += 1;
+                // НЕ очищаем group_counts! В Java map2 не очищается
+            }
         }
+
         result
     }
-
-    /// Выводит статистику группировки в требуемом формате
-    pub fn print_grouping_stats(groups: &[PanelGroup]) {
-        println!("=== Статистика группировки ===");
-        println!("Всего групп: {}", groups.len());
-
-        let total_instances: usize = groups.iter().map(|g| g.count).sum();
-        println!("Всего экземпляров: {}", total_instances);
-
-        let mut group_counter = 0u8;
-        
-        for group in groups {
-            for _instance in group.get_all_instances() {
-                println!(
-                    "Группа {}: id={}, gropup={}[{}x{}], group={}",
-                    group_counter,
-                    group.id,
-                    group_counter,
-                    group.width,
-                    group.height,
-                    group_counter
-                );
-                group_counter += 1;
-            }
-        }
-    }
 }
+
+
+
