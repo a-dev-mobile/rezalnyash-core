@@ -33,18 +33,16 @@ impl InputConverter {
 
     /// Преобразует PanelInput в Panel
     fn convert_panel(&self, panel_input: &PanelInput) -> Result<Panel, ScaledError> {
-        let width_str = &panel_input.width;
-        let height_str = &panel_input.height;
+        let width_scaled = self.scale_converter.convert_string(&panel_input.width)?;
+        let height_scaled = self.scale_converter.convert_string(&panel_input.height)?;
 
-        let width_scaled = self.scale_converter.convert_string(width_str)?;
-        let height_scaled = self.scale_converter.convert_string(height_str)?;
-
-        Ok(Panel {
-            width: width_scaled.raw_value_u32()?,
-            height: height_scaled.raw_value_u32()?,
-            count: panel_input.count,
-            label: panel_input.label.clone(),
-        })
+        Ok(Panel::new(
+            width_scaled.raw_value_u32()?,
+            height_scaled.raw_value_u32()?,
+            panel_input.count,
+            panel_input.label.clone(),
+            panel_input.id,
+        ))
     }
 
     /// Преобразует массив PanelInput в массив Panel
@@ -57,13 +55,8 @@ impl InputConverter {
 
     /// Преобразует StockInput в Stock
     fn convert_stock(&self, stock_input: &StockInput) -> Result<Stock, ScaledError> {
-        let width_str = &stock_input.width;
-        let height_str = &stock_input.height;
-
-        let width_scaled = self.scale_converter.convert_string(width_str)?;
-        let height_scaled = self.scale_converter.convert_string(height_str)?;
-
-
+        let width_scaled = self.scale_converter.convert_string(&stock_input.width)?;
+        let height_scaled = self.scale_converter.convert_string(&stock_input.height)?;
 
         Ok(Stock {
             width: width_scaled.raw_value_u32()?,
