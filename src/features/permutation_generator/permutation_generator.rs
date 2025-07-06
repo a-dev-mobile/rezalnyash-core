@@ -12,7 +12,7 @@ impl PermutationGenerator {
         }
 
         // Ограничиваем количество элементов для перестановок (чтобы не было взрыва памяти)
-        let max_items_for_full_permutation = 820;
+        let max_items_for_full_permutation = 8;
         
         if panels.len() <= max_items_for_full_permutation {
             println!("Генерация ВСЕХ перестановок для {} панелей", panels.len());
