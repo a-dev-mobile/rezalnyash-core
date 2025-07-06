@@ -1,96 +1,174 @@
+// permutation_generator.rs - обновленная версия
 use std::collections::HashMap;
 
-use crate::features::input::models::panel::Panel;
+use crate::features::input::models::{panel_group::PanelGroup, panel_instance::PanelInstance};
 
-
-
-/// Генератор перестановок панелей
-/// TODO: Взять из Arrangement.generatePermutations() и упростить
 pub struct PermutationGenerator;
 
 impl PermutationGenerator {
-    /// Генерация всех перестановок панелей
-    /// TODO: Реализовать по образцу Arrangement.generatePermutations()
-    pub fn generate_permutations<T: Clone>(items: Vec<T>) -> Vec<Vec<T>> {
-        if items.is_empty() {
+    /// Группирует панели по размерам и ориентации
+    pub fn group_panels(panels: &[PanelInstance]) -> Vec<PanelGroup> {
+        let mut groups: HashMap<String, PanelGroup> = HashMap::new();
+
+        // Группируем панели по эффективным размерам и ориентации
+        for panel in panels {
+            let (width, height) = panel.effective_dimensions();
+            let group_key = if panel.is_rotated {
+                format!("{}x{}_R", width, height)
+            } else {
+                format!("{}x{}_N", width, height)
+            };
+
+            groups
+                .entry(group_key.clone())
+                .or_insert_with(|| PanelGroup::new(width, height, panel.is_rotated))
+                .add_instance(panel.clone());
+        }
+
+        // Сортируем группы по убыванию площади (более крупные сначала)
+        let mut sorted_groups: Vec<PanelGroup> = groups.into_values().collect();
+        sorted_groups.sort_by(|a, b| {
+            let area_a = a.width * a.height;
+            let area_b = b.width * b.height;
+            area_b.cmp(&area_a) // Убывание по площади
+        });
+
+        sorted_groups
+    }
+
+    /// Генерирует перестановки групп панелей
+    pub fn generate_permutations(groups: Vec<PanelGroup>) -> Vec<Vec<PanelInstance>> {
+        if groups.is_empty() {
             return vec![vec![]];
         }
 
-        // TODO: Рекурсивная генерация перестановок
-        // Взять алгоритм из Arrangement.java
+        // Для начала создаем базовые стратегии размещения
+        let mut permutations = Vec::new();
 
-        // Пока заглушка - возвращаем исходный порядок
-        vec![items]
+        // Стратегия 1: Сортировка по убыванию площади
+        permutations.push(Self::create_permutation_by_area(&groups, true));
+
+        // Стратегия 2: Сортировка по возрастанию площади
+        permutations.push(Self::create_permutation_by_area(&groups, false));
+
+        // Стратегия 3: Сортировка по убыванию ширины
+        permutations.push(Self::create_permutation_by_width(&groups, true));
+
+        // Стратегия 4: Сортировка по убыванию высоты
+        permutations.push(Self::create_permutation_by_height(&groups, true));
+
+        // Стратегия 5: Смешанная стратегия - крупные сначала, потом мелкие
+        permutations.push(Self::create_mixed_permutation(&groups));
+
+        // Убираем дубликаты
+        // permutations.dedup();
+
+        permutations
     }
 
-    /// Группировка одинаковых панелей для оптимизации
-    /// Реализовано по образцу generateGroups() из CutListOptimizerServiceImpl.java
-    pub fn group_panels(panels: &[Panel]) -> Vec<Panel> {
-        // Создаем карту для подсчета количества одинаковых панелей
-        let mut panel_counts: HashMap<String, i32> = HashMap::new();
+    /// Создает перестановку на основе площади
+    fn create_permutation_by_area(groups: &[PanelGroup], descending: bool) -> Vec<PanelInstance> {
+        let mut sorted_groups = groups.to_vec();
+        sorted_groups.sort_by(|a, b| {
+            let area_a = a.width * a.height;
+            let area_b = b.width * b.height;
+            if descending {
+                area_b.cmp(&area_a)
+            } else {
+                area_a.cmp(&area_b)
+            }
+        });
 
-        // Подсчитываем количество каждого типа панели
-        for panel in panels {
-            let key = format!("{}x{}", panel.width, panel.height);
-            *panel_counts.entry(key).or_insert(0) += 1;
+        Self::flatten_groups(&sorted_groups)
+    }
+
+    /// Создает перестановку на основе ширины
+    fn create_permutation_by_width(groups: &[PanelGroup], descending: bool) -> Vec<PanelInstance> {
+        let mut sorted_groups = groups.to_vec();
+        sorted_groups.sort_by(|a, b| {
+            if descending {
+                a.width.cmp(&b.width).reverse()
+            } else {
+                a.width.cmp(&b.width)
+            }
+        });
+
+        Self::flatten_groups(&sorted_groups)
+    }
+
+    /// Создает перестановку на основе высоты
+    fn create_permutation_by_height(groups: &[PanelGroup], descending: bool) -> Vec<PanelInstance> {
+        let mut sorted_groups = groups.to_vec();
+        sorted_groups.sort_by(|a, b| {
+            if descending {
+                a.height.cmp(&b.height).reverse()
+            } else {
+                a.height.cmp(&b.height)
+            }
+        });
+
+        Self::flatten_groups(&sorted_groups)
+    }
+
+    /// Создает смешанную перестановку
+    fn create_mixed_permutation(groups: &[PanelGroup]) -> Vec<PanelInstance> {
+        let mut result = Vec::new();
+        let mut remaining_groups = groups.to_vec();
+
+        // Сначала берем по одному экземпляру из каждой группы (крупные сначала)
+        remaining_groups.sort_by(|a, b| {
+            let area_a = a.width * a.height;
+            let area_b = b.width * b.height;
+            area_b.cmp(&area_a)
+        });
+
+        // Добавляем по одному представителю от каждой группы
+        for group in &remaining_groups {
+            if let Some(instance) = group.get_representative() {
+                result.push(instance.clone());
+            }
         }
 
-        // Проверяем, является ли это одномерной оптимизацией
-        let is_one_dimensional = Self::is_one_dimensional_optimization(panels);
-
-        // Определяем максимальный размер группы
-        let max_group_size: usize = if is_one_dimensional {
-            1 // Для одномерной оптимизации группы не разбиваем
-        } else {
-            std::cmp::max(panels.len() / 100, 1)
-        };
-
-        let mut result = Vec::new();
-        let mut current_group_counts: HashMap<String, i32> = HashMap::new();
-        let mut group_id = 0;
-
-        for panel in panels {
-            let panel_key = format!("{}x{}", panel.width, panel.height);
-            let group_key = format!("{}{}", panel_key, group_id);
-
-            // Увеличиваем счетчик для текущей группы
-            let current_count = current_group_counts.entry(group_key.clone()).or_insert(0);
-            *current_count += 1;
-
-            // Создаем новую панель с group_id в качестве модификатора ID
-            let mut grouped_panel = panel.clone();
-            // grouped_panel.id = panel.id * 1000 + group_id;
-            result.push(grouped_panel);
-
-            // Проверяем, нужно ли создать новую группу
-            let total_count = panel_counts.get(&panel_key).unwrap_or(&0);
-            if *total_count > max_group_size as i32 && *current_count > total_count / 4 {
-                group_id += 1;
+        // Затем добавляем остальные экземпляры
+        for group in &remaining_groups {
+            for instance in group.get_all_instances().iter().skip(1) {
+                result.push(instance.clone());
             }
         }
 
         result
     }
 
-    /// Проверка является ли оптимизация одномерной
-    fn is_one_dimensional_optimization(panels: &[Panel]) -> bool {
-        return false;
-        // if panels.is_empty() {
-        //     return false;
-        // }
+    /// Разворачивает группы в плоский список панелей
+    fn flatten_groups(groups: &[PanelGroup]) -> Vec<PanelInstance> {
+        let mut result = Vec::new();
+        for group in groups {
+            result.extend(group.get_all_instances().iter().cloned());
+        }
+        result
+    }
 
-    //     let mut common_dimensions = vec![panels[0].width, panels[0].height];
+    /// Выводит статистику группировки
+    pub fn print_grouping_stats(groups: &[PanelGroup]) {
+        println!("=== Статистика группировки ===");
+        println!("Всего групп: {}", groups.len());
 
-    //     // Проверяем панели
-    //     for panel in panels {
-    //         // Удаляем размеры, которые не встречаются в текущей панели
-    //         common_dimensions.retain(|&dim| dim == panel.width || dim == panel.height);
+        let total_instances: usize = groups.iter().map(|g| g.count).sum();
+        println!("Всего экземпляров: {}", total_instances);
 
-    //         if common_dimensions.is_empty() {
-    //             return false;
-    //         }
-    //     }
-
-    //     !common_dimensions.is_empty()
+        for (i, group) in groups.iter().enumerate() {
+            println!(
+                "Группа {}: {}x{} {} ({}шт)",
+                i + 1,
+                group.width,
+                group.height,
+                if group.is_rotated {
+                    "повернуто"
+                } else {
+                    "обычно"
+                },
+                group.count
+            );
+        }
     }
 }

@@ -1,5 +1,12 @@
-use crate::{features::{input::models::{panel::Panel, stock::Stock}, permutation_generator::PermutationGenerator, placement::Placement, solution::Solution}, utils::json::save_to_json};
-
+use crate::{
+    features::{
+        input::models::{panel::Panel, panel_instance::PanelInstance, stock::Stock},
+        permutation_generator::PermutationGenerator,
+        placement::Placement,
+        solution::Solution,
+    },
+    utils::json::save_to_json,
+};
 
 /// Главный класс оптимизатора
 pub struct CuttingOptimizer {
@@ -30,14 +37,20 @@ impl CuttingOptimizer {
             self.stock[0].height
         );
 
-        save_to_json(&self.panels, "_base_panels.json");
-        // ЭТАП 1: Развернуть панели по количеству
+        save_to_json(&self.panels, "_base_panels.json").unwrap();
+       
+        // ЭТАП 1: Развернуть панели по количеству и повороту
         let expanded_panels = self.expand_panels();
         println!("Развернуто панелей: {}", expanded_panels.len());
-        save_to_json(&expanded_panels, "_expanded_panels.json");
+        save_to_json(&expanded_panels, "_expanded_panels.json").unwrap();
+       
         // ЭТАП 2: Сгруппировать панели для оптимизации перестановок
         let grouped_panels = PermutationGenerator::group_panels(&expanded_panels);
-        save_to_json(&grouped_panels, "_grouped_panels.json");
+        println!("Создано групп: {}", grouped_panels.len());
+        save_to_json(&grouped_panels, "_grouped_panels.json").unwrap();
+
+        PermutationGenerator::print_grouping_stats(&grouped_panels);
+
         // ЭТАП 3: Генерировать перестановки
         println!("Генерация перестановок...");
         let permutations = PermutationGenerator::generate_permutations(grouped_panels);
@@ -90,24 +103,36 @@ impl CuttingOptimizer {
         best_solution
     }
 
-    /// Развертывание панелей по количеству
-    fn expand_panels(&self) -> Vec<Panel> {
-        let mut expanded = Vec::new();
+    /// Развертывание панелей по количеству и повороту
+    fn expand_panels(&self) -> Vec<PanelInstance> {
+        let mut instances = Vec::new();
+
         for panel in &self.panels {
             for i in 0..panel.count {
-                let mut new_panel = panel.clone();
-                new_panel.count = 1;
-                // Уникальный ID для каждой копии
-                // new_panel.id = panel.id * 1000 + i;
-                expanded.push(new_panel);
+                let instance_number = i + 1;
+
+                // Создаем базовый экземпляр (без поворота)
+                let base_instance = PanelInstance::new(
+                    panel.width,
+                    panel.height,
+                    panel.original_id,
+                    instance_number,
+                    false,
+                );
+
+                instances.push(base_instance.clone());
+
+                // Добавляем повернутую версию только если панель не квадратная
+                if !panel.is_square() {
+                    instances.push(base_instance.create_rotated());
+                }
             }
         }
-        expanded
+        instances
     }
-
     /// Попытка решения с заданной перестановкой и количеством листов
     /// TODO: Основная логика размещения
-    fn try_solution(&self, panels: &[Panel], sheet_count: usize) -> Solution {
+    fn try_solution(&self, panels: &[PanelInstance], sheet_count: usize) -> Solution {
         let mut solution = Solution::new();
         let mut remaining_panels = panels.to_vec();
 
