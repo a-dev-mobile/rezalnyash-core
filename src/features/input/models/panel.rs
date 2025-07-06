@@ -6,13 +6,13 @@ use uuid::Uuid;
 pub struct Panel {
     pub width: u32,
     pub height: u32,
-    pub count: u8,
+    pub count: u16,
     pub label: String,
     pub original_id: u16,
 }
 
 impl Panel {
-   pub fn new(width: u32, height: u32, count: u8, label: String, original_id: u16) -> Self {
+   pub fn new(width: u32, height: u32, count: u16, label: String, original_id: u16) -> Self {
         Self {
             width,
             height,
