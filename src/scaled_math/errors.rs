@@ -9,6 +9,8 @@ pub enum ScaledError {
     ScaleMismatch { left: u8, right: u8 },
     /// Переполнение при вычислениях
     Overflow,
+    /// Деление на ноль
+    DivisionByZero,
     /// Недопустимая точность
     InvalidPrecision(u8),
     /// Ошибка парсинга
@@ -26,6 +28,7 @@ impl fmt::Display for ScaledError {
                 write!(f, "Scale mismatch: {} vs {}", left, right)
             }
             ScaledError::Overflow => write!(f, "Arithmetic overflow"),
+            ScaledError::DivisionByZero => write!(f, "Division by zero"),
             ScaledError::InvalidPrecision(p) => write!(f, "Invalid precision: {}", p),
             ScaledError::ParseError(s) => write!(f, "Parse error: {}", s),
             ScaledError::NegativeToUnsigned => write!(f, "Cannot convert negative number to unsigned type"),

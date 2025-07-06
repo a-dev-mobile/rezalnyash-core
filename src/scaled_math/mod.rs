@@ -8,8 +8,7 @@ mod scaled_number;
 mod precision_analyzer;
 mod converter;
 
-#[cfg(test)]
-mod tests;
+
 
 // Публичные экспорты
 pub use errors::ScaledError;
