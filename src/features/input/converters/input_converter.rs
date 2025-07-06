@@ -59,6 +59,7 @@ impl InputConverter {
         let height_scaled = self.scale_converter.convert_string(&stock_input.height)?;
 
         Ok(Stock {
+            original_id: stock_input.id,
             width: width_scaled.raw_value_u32()?,
             height: height_scaled.raw_value_u32()?,
             label: stock_input.label.clone(),

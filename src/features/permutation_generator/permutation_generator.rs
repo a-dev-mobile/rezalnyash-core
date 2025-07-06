@@ -1,30 +1,33 @@
 // features/permutation_generator.rs
-use crate::features::input::models::panel_instance::PanelInstance;
+use crate::features::input::models::tile_dimensions::TileDimensions;
 
 /// Отвечает за генерацию перестановок панелей
 pub struct PermutationGenerator;
 
 impl PermutationGenerator {
     /// Генерирует все возможные перестановки панелей
-    pub fn generate_all_permutations(panels: Vec<PanelInstance>) -> Vec<Vec<PanelInstance>> {
+    pub fn generate_all_permutations(panels: Vec<TileDimensions>) -> Vec<Vec<TileDimensions>> {
         if panels.len() <= 1 {
             return vec![panels];
         }
 
         // Ограничиваем количество элементов для перестановок (чтобы не было взрыва памяти)
         let max_items_for_full_permutation = 8;
-        
+
         if panels.len() <= max_items_for_full_permutation {
             println!("Генерация ВСЕХ перестановок для {} панелей", panels.len());
             Self::generate_full_permutations(panels)
         } else {
-            println!("Генерация ограниченных перестановок для {} панелей", panels.len());
+            println!(
+                "Генерация ограниченных перестановок для {} панелей",
+                panels.len()
+            );
             Self::generate_limited_permutations(panels)
         }
     }
 
     /// Генерирует все возможные перестановки (факториал)
-    fn generate_full_permutations(mut panels: Vec<PanelInstance>) -> Vec<Vec<PanelInstance>> {
+    fn generate_full_permutations(mut panels: Vec<TileDimensions>) -> Vec<Vec<TileDimensions>> {
         let mut result = Vec::new();
         Self::permute(&mut panels, 0, &mut result);
         println!("Сгенерировано {} полных перестановок", result.len());
@@ -32,7 +35,11 @@ impl PermutationGenerator {
     }
 
     /// Рекурсивная функция для генерации перестановок
-    fn permute(panels: &mut Vec<PanelInstance>, start: usize, result: &mut Vec<Vec<PanelInstance>>) {
+    fn permute(
+        panels: &mut Vec<TileDimensions>,
+        start: usize,
+        result: &mut Vec<Vec<TileDimensions>>,
+    ) {
         if start == panels.len() {
             result.push(panels.clone());
             return;
@@ -46,7 +53,7 @@ impl PermutationGenerator {
     }
 
     /// Генерирует ограниченный набор перестановок для больших массивов
-    fn generate_limited_permutations(panels: Vec<PanelInstance>) -> Vec<Vec<PanelInstance>> {
+    fn generate_limited_permutations(panels: Vec<TileDimensions>) -> Vec<Vec<TileDimensions>> {
         let mut permutations = Vec::new();
 
         // 1. Исходный порядок
@@ -105,12 +112,15 @@ impl PermutationGenerator {
         // Убираем дубликаты
         Self::remove_duplicates(&mut permutations);
 
-        println!("Сгенерировано {} ограниченных перестановок", permutations.len());
+        println!(
+            "Сгенерировано {} ограниченных перестановок",
+            permutations.len()
+        );
         permutations
     }
 
     /// Простая функция перемешивания (псевдослучайная)
-    fn shuffle(panels: &mut Vec<PanelInstance>, seed: usize) {
+    fn shuffle(panels: &mut Vec<TileDimensions>, seed: usize) {
         for i in 0..panels.len() {
             let j = (i * 7 + 13 + seed * 31) % panels.len(); // Простая псевдослучайная формула
             panels.swap(i, j);
@@ -118,7 +128,7 @@ impl PermutationGenerator {
     }
 
     /// Удаляет дубликаты перестановок
-    fn remove_duplicates(permutations: &mut Vec<Vec<PanelInstance>>) {
+    fn remove_duplicates(permutations: &mut Vec<Vec<TileDimensions>>) {
         // Простое удаление дубликатов через сравнение строковых представлений
         let mut unique_permutations = Vec::new();
         let mut seen_signatures = std::collections::HashSet::new();
@@ -134,28 +144,39 @@ impl PermutationGenerator {
     }
 
     /// Создает подпись перестановки для сравнения
-    fn get_permutation_signature(permutation: &[PanelInstance]) -> String {
+    fn get_permutation_signature(permutation: &[TileDimensions]) -> String {
         permutation
             .iter()
-            .map(|p| format!("{}x{}{}", p.width, p.height, if p.is_rotated { "R" } else { "N" }))
+            .map(|p| {
+                format!(
+                    "{}x{}{}",
+                    p.width,
+                    p.height,
+                    if p.is_rotated { "R" } else { "N" }
+                )
+            })
             .collect::<Vec<_>>()
             .join(",")
     }
 
     /// Выводит статистику перестановок
-    pub fn print_permutation_stats(permutations: &[Vec<PanelInstance>]) {
+    pub fn print_permutation_stats(permutations: &[Vec<TileDimensions>]) {
         println!("=== Статистика перестановок ===");
         println!("Всего перестановок: {}", permutations.len());
-        
+
         if !permutations.is_empty() {
             println!("Панелей в каждой перестановке: {}", permutations[0].len());
         }
 
         // Покажем первые несколько перестановок для примера
         for (i, permutation) in permutations.iter().take(3).enumerate() {
-            println!("Перестановка {}: {}", i + 1, Self::get_permutation_signature(permutation));
+            println!(
+                "Перестановка {}: {}",
+                i + 1,
+                Self::get_permutation_signature(permutation)
+            );
         }
-        
+
         if permutations.len() > 3 {
             println!("... и еще {} перестановок", permutations.len() - 3);
         }
