@@ -131,7 +131,7 @@ pub struct MaterialConstants;
 
 impl MaterialConstants {
     /// Default material name used across the application when no specific material is specified
-    pub const DEFAULT_MATERIAL: &'static str = "DEFAULT";
+    pub const DEFAULT_MATERIAL: &'static str = "DEFAULT_MATERIAL";
 }
 
 /// Utility and conversion constants

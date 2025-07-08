@@ -7,5 +7,6 @@ pub mod grouped_tile_dimensions;
 
 pub mod stock_input;
 pub mod stock;
+pub mod edge;
 
 
