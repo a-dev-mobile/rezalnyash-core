@@ -1,7 +1,10 @@
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::features::{input::traits::dimensions::Dimensions};
+use crate::{
+    constants::MaterialConstants,
+    features::input::{models::edge::Edge, traits::dimensions::Dimensions},
+};
 
 // 1. ВХОДНАЯ МОДЕЛЬ - то что приходит от пользователя
 #[derive(Serialize, Debug, Clone)]
@@ -10,7 +13,10 @@ pub struct PanelInput {
     pub width: String,
     pub height: String,
     pub count: u16,
+    pub enabled: bool,
     pub label: String,
+    pub material: String,
+    pub edge: Option<Edge>,
 }
 
 impl PanelInput {
@@ -20,7 +26,10 @@ impl PanelInput {
             width: width.to_string(),
             height: height.to_string(),
             count,
+            enabled: true,
             label: label.to_string(),
+            material: MaterialConstants::DEFAULT_MATERIAL.to_string(),
+            edge: None,
         }
     }
 }
