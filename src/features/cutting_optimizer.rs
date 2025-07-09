@@ -1,6 +1,6 @@
 use crate::{
     features::{
-        input::models::{panel::Panel, stock::Stock, tile_dimensions::TileDimensions},
+        input::models::{panel::Panel, tile_dimensions::TileDimensions},
         panel_grouper::panel_grouper::PanelGrouper,
         permutation_generator::permutation_generator::PermutationGenerator,
         placement::Placement,
@@ -12,13 +12,13 @@ use crate::{
 /// Главный класс оптимизатора
 pub struct CuttingOptimizer {
     pub panels: Vec<Panel>,
-    pub stocks: Vec<Stock>,
+    pub stocks: Vec<Panel>,
     pub cut_thickness: i32,
     pub max_sheets: usize,
 }
 
 impl CuttingOptimizer {
-    pub fn new(panels: Vec<Panel>, stock: Vec<Stock>) -> Self {
+    pub fn new(panels: Vec<Panel>, stock: Vec<Panel>) -> Self {
         Self {
             panels,
             stocks: stock,
@@ -42,18 +42,26 @@ impl CuttingOptimizer {
         save_to_json(&self.panels, "_base_panels.json").unwrap();
 
         // ЭТАП 1: Развернуть панели по количеству
-        let panels_expanded_tiles = self.expand_panels();
-
-        println!("Развернуто панелей: {}", panels_expanded_tiles.len());
-        save_to_json(&panels_expanded_tiles, "_expanded_panels.json").unwrap();
-
-        let stock_tiles: Vec<TileDimensions> = self.stocks
+        let panels_expanded = self
+            .panels
             .iter()
-            .map(|stock| stock.to_tile_dimensions())
-            .collect();
+            .flat_map(|panel| panel.expand())
+            .collect::<Vec<TileDimensions>>();
+
+        let stock_expanded = self
+            .stocks
+            .iter()
+            .flat_map(|panel| panel.expand())
+            .collect::<Vec<TileDimensions>>();
+
+        println!("Развернуто панелей: {}", panels_expanded.len());
+        println!("Развернуто заготовок: {}", stock_expanded.len());
+
+        save_to_json(&panels_expanded, "_expanded_panels.json").unwrap();
+        save_to_json(&stock_expanded, "_expanded_stocks.json").unwrap();
 
         // ЭТАП 2: Сгруппировать панели для оптимизации перестановок
-        let grouped_panels = PanelGrouper::group_panels(&panels_expanded_tiles, &stock_tiles);
+        let grouped_panels = PanelGrouper::group_panels(&panels_expanded, &stock_expanded);
 
         println!("Создано групп: {}", grouped_panels.len());
 
@@ -67,11 +75,11 @@ impl CuttingOptimizer {
         println!("\n=== ЭТАП 3: Создание перестановок ===");
         let permutations = PermutationGenerator::create_group_permutations(&grouped_panels);
         PermutationGenerator::print_permutation_stats(&permutations);
-        
+
         // Сохраняем первые несколько перестановок для отладки
         if !permutations.is_empty() {
             save_to_json(&permutations[0], "_first_permutation.json").unwrap();
-            
+
             if permutations.len() > 1 {
                 save_to_json(&permutations[1], "_second_permutation.json").unwrap();
             }
@@ -85,33 +93,6 @@ impl CuttingOptimizer {
         println!("- Алгоритм размещения панелей (CutListThread)");
         println!("- Сборка финального результата");
 
-  
         Solution::new() // Возвращаем пустое решение для примера
     }
-
-    /// Развертывание панелей по количеству
-    fn expand_panels(&self) -> Vec<TileDimensions> {
-        let mut instances = Vec::new();
-
-        for panel in &self.panels {
-            for i in 0..panel.count {
-                let instance_number = i + 1;
-
-                // Создаем базовый экземпляр
-                let base_instance = TileDimensions::new(
-                    panel.width,
-                    panel.height,
-                    panel.original_id,
-                    instance_number,
-                    false,
-                );
-
-                instances.push(base_instance.clone());
-            }
-        }
-        instances
-    }
-    
-   
-
 }

@@ -1,6 +1,6 @@
 use crate::{
     features::input::{
-        models::{panel::Panel, panel_input::PanelInput, stock::Stock, stock_input::StockInput},
+        models::{panel::Panel, panel_input::PanelInput, stock_input::StockInput},
         traits::dimensions::Dimensions,
     },
     scaled_math::{ScaledConverter, ScaledError},
@@ -32,16 +32,17 @@ impl InputConverter {
     }
 
     /// Преобразует PanelInput в Panel
-    fn convert_panel(&self, panel_input: &PanelInput) -> Result<Panel, ScaledError> {
-        let width_scaled = self.scale_converter.convert_string(&panel_input.width)?;
-        let height_scaled = self.scale_converter.convert_string(&panel_input.height)?;
+    fn convert_panel(&self, input: &PanelInput) -> Result<Panel, ScaledError> {
+        let width_scaled = self.scale_converter.convert_string(&input.width)?;
+        let height_scaled = self.scale_converter.convert_string(&input.height)?;
 
         Ok(Panel::new(
+            input.id,
             width_scaled.raw_value_u32()?,
             height_scaled.raw_value_u32()?,
-            panel_input.count,
-            panel_input.label.clone(),
-            panel_input.id,
+            input.count,
+            input.label.clone(),
+            input.material.clone(),
         ))
     }
 
@@ -54,20 +55,22 @@ impl InputConverter {
     }
 
     /// Преобразует StockInput в Stock
-    fn convert_stock(&self, stock_input: &StockInput) -> Result<Stock, ScaledError> {
-        let width_scaled = self.scale_converter.convert_string(&stock_input.width)?;
-        let height_scaled = self.scale_converter.convert_string(&stock_input.height)?;
+    fn convert_stock(&self, input: &StockInput) -> Result<Panel, ScaledError> {
+        let width_scaled = self.scale_converter.convert_string(&input.width)?;
+        let height_scaled = self.scale_converter.convert_string(&input.height)?;
 
-        Ok(Stock {
-            original_id: stock_input.id,
-            width: width_scaled.raw_value_u32()?,
-            height: height_scaled.raw_value_u32()?,
-            label: stock_input.label.clone(),
-        })
+        Ok(Panel::new(
+            input.id,
+            width_scaled.raw_value_u32()?,
+            height_scaled.raw_value_u32()?,
+            input.count,
+            input.label.clone(),
+            input.material.clone(),
+        ))
     }
 
     /// Преобразует массив StockInput в массив Stock
-    fn convert_stocks(&self, stocks_input: &[StockInput]) -> Result<Vec<Stock>, ScaledError> {
+    fn convert_stocks(&self, stocks_input: &[StockInput]) -> Result<Vec<Panel>, ScaledError> {
         stocks_input
             .iter()
             .map(|stock| self.convert_stock(stock))
@@ -79,7 +82,7 @@ impl InputConverter {
         &self,
         panels_input: &[PanelInput],
         stocks_input: &[StockInput],
-    ) -> Result<(Vec<Panel>, Vec<Stock>), ScaledError> {
+    ) -> Result<(Vec<Panel>, Vec<Panel>), ScaledError> {
         let panels = self.convert_panels(panels_input)?;
         let stocks = self.convert_stocks(stocks_input)?;
         Ok((panels, stocks))
