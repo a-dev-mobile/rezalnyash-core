@@ -4,7 +4,7 @@
 // ЭТАП 3: РАЗМЕЩЕНИЕ НА ОДНОМ ЛИСТЕ
 // ============================================================================
 
-use crate::features::{cut::Cut, input::models::{panel::Panel, stock::Stock}, node::Node, placed_panel::PlacedPanel, rectangle::Rectangle};
+use crate::features::{cut::Cut, input::models::{panel::Panel}, node::Node, placed_panel::PlacedPanel, rectangle::Rectangle};
 
 /// Результат размещения на одном листе
 #[derive(Debug, Clone)]

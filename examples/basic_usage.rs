@@ -26,7 +26,8 @@ fn main() {
     ];
 
     // Заготовка -
-    let stocks_input: Vec<StockInput> = vec![StockInput::new(1, "400.0", "300.0", "Заготовка_1")];
+    let stocks_input: Vec<StockInput> =
+        vec![StockInput::new(1, "400.0", "300.0", 1, "Заготовка_1")];
 
     let input_converter = InputConverter::new(&panels_input, &stocks_input).unwrap();
 
