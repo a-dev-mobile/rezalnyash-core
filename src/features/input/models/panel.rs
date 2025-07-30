@@ -38,6 +38,18 @@ impl Panel {
     pub fn is_square(&self) -> bool {
         self.width == self.height
     }
+
+    /// Повернуть панель на 90 градусов (поменять местами ширину и высоту)
+    pub fn rotate(&self) -> Self {
+        Self {
+            id: self.id,
+            width: self.height,
+            height: self.width,
+            count: self.count,
+            label: self.label.clone(),
+            material: self.material.clone(),
+        }
+    }
     pub fn expand(&self) -> Vec<TileDimensions> {
         (1..=self.count)
             .map(|_| {

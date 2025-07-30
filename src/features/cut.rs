@@ -10,6 +10,16 @@ pub struct Cut {
 }
 
 impl Cut {
+    pub fn new(x1: i32, y1: i32, x2: i32, y2: i32, is_horizontal: bool) -> Self {
+        Self {
+            x1,
+            y1,
+            x2,
+            y2,
+            is_horizontal,
+        }
+    }
+
     pub fn new_horizontal(x: i32, y: i32, length: i32) -> Self {
         Self {
             x1: x,
