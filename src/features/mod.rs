@@ -11,3 +11,4 @@ pub mod solution;
 pub mod permutation_generator;
 pub mod cutting_optimizer;
 pub mod panel_grouper;
+pub mod html_generator;

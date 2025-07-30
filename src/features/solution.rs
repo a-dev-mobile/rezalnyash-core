@@ -5,6 +5,7 @@ use crate::features::{ input::models::panel::Panel, placement::Placement};
 pub struct Solution {
     pub placements: Vec<Placement>,
     pub unplaced_panels: Vec<Panel>,
+    pub stocks: Vec<Panel>, // Добавляем информацию о заготовках
     pub total_efficiency: f64,
     pub total_cuts: usize,
     pub total_cut_length: i32,
@@ -17,6 +18,20 @@ impl Solution {
         Self {
             placements: Vec::new(),
             unplaced_panels: Vec::new(),
+            stocks: Vec::new(),
+            total_efficiency: 0.0,
+            total_cuts: 0,
+            total_cut_length: 0,
+            total_used_area: 0,
+            total_waste_area: 0,
+        }
+    }
+
+    pub fn new_with_stocks(stocks: Vec<Panel>) -> Self {
+        Self {
+            placements: Vec::new(),
+            unplaced_panels: Vec::new(),
+            stocks,
             total_efficiency: 0.0,
             total_cuts: 0,
             total_cut_length: 0,

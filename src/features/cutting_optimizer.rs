@@ -85,14 +85,112 @@ impl CuttingOptimizer {
             }
         }
 
-        // TODO: Следующие этапы (пока заглушка)
-        println!("\n=== СЛЕДУЮЩИЕ ЭТАПЫ (TODO) ===");
-        println!("- Инициализация генератора исходных листов (StockPanelPicker)");
-        println!("- Настройка системы решений и компараторов");
-        println!("- Основной цикл оптимизации по перестановкам");
-        println!("- Алгоритм размещения панелей (CutListThread)");
-        println!("- Сборка финального результата");
+        // ЭТАП 4: Основной цикл оптимизации - реализуем как в Java
+        println!("\n=== ЭТАП 4: Основной цикл оптимизации ===");
+        
+        let mut best_solution = Solution::new_with_stocks(self.stocks.clone());
+        let mut best_efficiency = 0.0;
+        
+        // Попробуем несколько перестановок для поиска лучшего решения
+        let max_permutations_to_try = std::cmp::min(permutations.len(), 5); // Попробуем до 5 перестановок
+        println!("Попробуем {} перестановок из {}", max_permutations_to_try, permutations.len());
+        
+        for (perm_index, permutation) in permutations.iter().take(max_permutations_to_try).enumerate() {
+            println!("\n--- Пробуем перестановку {} ---", perm_index + 1);
+            let mut current_solution = Solution::new_with_stocks(self.stocks.clone());
+            
+            let mut remaining_panels: Vec<_> = permutation.iter().map(|tile_dim| {
+                Panel {
+                    id: tile_dim.id,
+                    width: tile_dim.width,
+                    height: tile_dim.height,
+                    count: 1, // TileDimensions уже развернут
+                    label: tile_dim.label.clone(),
+                    material: "DEFAULT_MATERIAL".to_string(),
+                }
+            }).collect();
+            
+            let mut stock_index = 0;
+            let mut total_placed = 0;
+            
+            // Главный цикл: пробуем разместить все панели, используя новые листы по мере необходимости
+            while !remaining_panels.is_empty() && stock_index < self.max_sheets {
+                // Берем следующий лист (используем первый лист из stocks как шаблон)
+                let stock_template = &self.stocks[0];
+                let mut placement = crate::features::placement::Placement::new(stock_template);
+                placement.stock_id = stock_index as i32;
+                
+                println!("\n--- Начинаем размещение на листе {} ---", stock_index + 1);
+                
+                let mut placed_on_this_sheet = 0;
+                let mut i = 0;
+                
+                // Пробуем разместить панели на текущем листе
+                while i < remaining_panels.len() {
+                    let panel = &remaining_panels[i];
+                    
+                    if placement.try_place_panel(panel, self.cut_thickness) {
+                        println!("✓ Размещена панель {}x{} [{}] на листе {}", 
+                            panel.width, panel.height, panel.label, stock_index + 1);
+                        placed_on_this_sheet += 1;
+                        total_placed += 1;
+                        remaining_panels.remove(i);
+                        // Не увеличиваем i, так как элементы сдвинулись
+                    } else {
+                        i += 1; // Переходим к следующей панели
+                    }
+                }
+                
+                println!("На листе {} размещено {} панелей", stock_index + 1, placed_on_this_sheet);
+                
+                // Добавляем размещение только если что-то было размещено
+                if placed_on_this_sheet > 0 {
+                    current_solution.placements.push(placement);
+                }
+                
+                stock_index += 1;
+                
+                // Если на листе ничего не разместилось, прекращаем попытки
+                if placed_on_this_sheet == 0 {
+                    println!("⚠️  На листе {} ничего не поместилось, прекращаем размещение", stock_index);
+                    break;
+                }
+            }
+            
+            // Все оставшиеся панели помечаем как неразмещенные
+            current_solution.unplaced_panels = remaining_panels;
+            
+            // Рассчитываем эффективность этой перестановки
+            let total_used_area: i64 = current_solution.placements.iter().map(|p| p.used_area).sum();
+            let total_area: i64 = current_solution.placements.len() as i64 * (self.stocks[0].width as i64 * self.stocks[0].height as i64);
+            let efficiency = if total_area > 0 { total_used_area as f64 / total_area as f64 } else { 0.0 };
+            
+            println!("Перестановка {}: {} листов, эффективность {:.2}%, неразмещенных: {}", 
+                perm_index + 1, current_solution.placements.len(), efficiency * 100.0, current_solution.unplaced_panels.len());
+            
+            // Проверяем, лучше ли это решение
+            let is_better = current_solution.unplaced_panels.len() < best_solution.unplaced_panels.len() ||
+                           (current_solution.unplaced_panels.len() == best_solution.unplaced_panels.len() && efficiency > best_efficiency);
+            
+            if is_better {
+                println!("✓ Найдено лучшее решение!");
+                best_solution = current_solution;
+                best_efficiency = efficiency;
+            }
+        }
+        
+        println!("\n=== Итоговый результат оптимизации ===");
+        println!("Использовано листов: {}", best_solution.placements.len());
+        println!("Эффективность: {:.2}%", best_efficiency * 100.0);
+        println!("Не размещено панелей: {}", best_solution.unplaced_panels.len());
+        
+        if !best_solution.unplaced_panels.is_empty() {
+            println!("Неразмещенные панели:");
+            for panel in &best_solution.unplaced_panels {
+                println!("  • {}x{} [{}]", panel.width, panel.height, panel.label);
+            }
+        }
 
-        Solution::new() // Возвращаем пустое решение для примера
+        best_solution
     }
 }
