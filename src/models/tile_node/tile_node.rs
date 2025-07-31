@@ -156,6 +156,11 @@ impl TileNode {
         self.child1.as_deref()
     }
     
+    /// Gets a mutable reference to the first child node
+    pub fn child1_mut(&mut self) -> Option<&mut TileNode> {
+        self.child1.as_deref_mut()
+    }
+    
     /// Sets the first child node
     pub fn set_child1(&mut self, child: Option<TileNode>) {
         self.child1 = child.map(Box::new);
@@ -164,6 +169,11 @@ impl TileNode {
     /// Gets the second child node
     pub fn child2(&self) -> Option<&TileNode> {
         self.child2.as_deref()
+    }
+    
+    /// Gets a mutable reference to the second child node
+    pub fn child2_mut(&mut self) -> Option<&mut TileNode> {
+        self.child2.as_deref_mut()
     }
     
     /// Sets the second child node
@@ -194,7 +204,7 @@ impl TileNode {
     /// # Returns
     /// Some reference to the found node, or None if not found
     pub fn find_tile(&self, target: &TileNode) -> Option<&TileNode> {
-        if self == target {
+        if self.equals_java_style(target) {
             return Some(self);
         }
         
@@ -209,6 +219,49 @@ impl TileNode {
         }
         
         None
+    }
+
+    /// Finds a mutable tile node in the tree
+    /// 
+    /// # Arguments
+    /// * `target` - The tile node to find
+    /// 
+    /// # Returns
+    /// Some mutable reference to the found node, or None if not found
+    pub fn find_tile_mut(&mut self, target: &TileNode) -> Option<&mut TileNode> {
+        if self.equals_java_style(target) {
+            return Some(self);
+        }
+        
+        if let Some(child1) = &mut self.child1 {
+            if let Some(found) = child1.find_tile_mut(target) {
+                return Some(found);
+            }
+        }
+        
+        if let Some(child2) = &mut self.child2 {
+            return child2.find_tile_mut(target);
+        }
+        
+        None
+    }
+
+    /// Java-style equals comparison (matches Java TileNode.equals() logic)
+    pub fn equals_java_style(&self, other: &TileNode) -> bool {
+        if self.id == other.id && self.tile == other.tile && self.is_final == other.is_final {
+            if self.child1.is_none() && other.child1.is_none() {
+                return true;
+            }
+            if let (Some(child1), Some(other_child1)) = (&self.child1, &other.child1) {
+                if child1.equals_java_style(other_child1) && self.child2.is_none() && other.child2.is_none() {
+                    return true;
+                }
+            }
+            if let (Some(child2), Some(other_child2)) = (&self.child2, &other.child2) {
+                return child2.equals_java_style(other_child2);
+            }
+        }
+        false
     }
     
     /// Replaces a tile node in the tree
@@ -652,6 +705,66 @@ impl TileNode {
     /// Checks if the tile is vertical
     pub fn is_vertical(&self) -> bool {
         self.tile.is_vertical()
+    }
+
+    /// Creates a deep copy of a TileNode tree, like the Java copy() method
+    /// 
+    /// # Arguments
+    /// * `root` - The root node to copy
+    /// * `target_to_find` - Optional target node to track during copying
+    /// 
+    /// # Returns
+    /// A deep copy of the tree
+    pub fn copy_tree(root: &TileNode, target_to_find: Option<&TileNode>) -> TileNode {
+        let mut new_root = TileNode::from_tile_node(root);
+        if let Some(target) = target_to_find {
+            Self::copy_children_recursive(root, &mut new_root, target);
+        }
+        new_root
+    }
+
+    /// Recursive helper for copying children while preserving structure
+    fn copy_children_recursive(original: &TileNode, copy: &mut TileNode, target: &TileNode) {
+        if let Some(child1) = &original.child1 {
+            let mut child1_copy = TileNode::from_tile_node(child1);
+            Self::copy_children_recursive(child1, &mut child1_copy, target);
+            copy.child1 = Some(Box::new(child1_copy));
+        }
+        
+        if let Some(child2) = &original.child2 {
+            let mut child2_copy = TileNode::from_tile_node(child2);
+            Self::copy_children_recursive(child2, &mut child2_copy, target);
+            copy.child2 = Some(Box::new(child2_copy));
+        }
+    }
+
+    /// Mutable version of used_area that can update caching flags
+    pub fn used_area_mut(&mut self) -> u64 {
+        if self.is_area_totally_used {
+            return self.totally_used_area;
+        }
+        
+        if self.is_final {
+            return self.tile.area();
+        }
+        
+        let mut used = 0u64;
+        
+        if let Some(child1) = &mut self.child1 {
+            used += child1.used_area_mut();
+        }
+        
+        if let Some(child2) = &mut self.child2 {
+            used += child2.used_area_mut();
+        }
+        
+        // Update caching
+        if used == self.tile.area() {
+            self.is_area_totally_used = true;
+            self.totally_used_area = self.tile.area();
+        }
+        
+        used
     }
 }
 
