@@ -85,6 +85,38 @@ impl Mosaic {
         })
     }
 
+    /// Creates a new Mosaic from TileDimensions (alias for from_tile_dimensions)
+    /// 
+    /// # Arguments
+    /// * `tile_dimensions` - The dimensions to create the mosaic from
+    /// 
+    /// # Returns
+    /// A new Mosaic with a root tile node created from the dimensions
+    /// 
+    /// # Errors
+    /// Returns `CoreError::InvalidInput` if tile dimensions are invalid
+    pub fn new(tile_dimensions: &TileDimensions) -> Result<Self, CoreError> {
+        Self::from_tile_dimensions(tile_dimensions)
+    }
+
+    /// Creates a new Mosaic from a root tile node and optional material
+    /// 
+    /// # Arguments
+    /// * `root_tile_node` - The root tile node for this mosaic
+    /// * `material` - Optional material type
+    /// 
+    /// # Returns
+    /// A new Mosaic with the specified root tile node
+    pub fn from_root_tile_node(root_tile_node: TileNode, material: Option<String>) -> Self {
+        Mosaic {
+            stock_id: root_tile_node.external_id(),
+            orientation: 0,
+            material: material.unwrap_or_else(|| "Default".to_string()),
+            cuts: Vec::new(),
+            root_tile_node,
+        }
+    }
+
     /// Gets the root tile node
     pub fn root_tile_node(&self) -> &TileNode {
         &self.root_tile_node
@@ -103,6 +135,16 @@ impl Mosaic {
     /// Sets the cuts
     pub fn set_cuts(&mut self, cuts: Vec<Cut>) {
         self.cuts = cuts;
+    }
+
+    /// Gets mutable reference to cuts
+    pub fn get_cuts_mut(&mut self) -> &mut Vec<Cut> {
+        &mut self.cuts
+    }
+
+    /// Adds a cut to this mosaic
+    pub fn add_cut(&mut self, cut: Cut) {
+        self.cuts.push(cut);
     }
 
     /// Gets the number of cuts
@@ -241,13 +283,6 @@ impl Mosaic {
         self.root_tile_node.biggest_area()
     }
 
-    /// Adds a cut to the mosaic
-    /// 
-    /// # Arguments
-    /// * `cut` - The cut to add
-    pub fn add_cut(&mut self, cut: Cut) {
-        self.cuts.push(cut);
-    }
 
     /// Removes a cut at the specified index
     /// 
