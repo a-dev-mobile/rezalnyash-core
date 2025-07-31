@@ -9,16 +9,17 @@ use rezalnyas_core::{
 use std::cmp::Ordering;
 use std::time::Instant;
 
-// Компараторы решений - обертки для функций из solution_comparator
+// ✅ ИСПРАВЛЕНО: Java-совместимые компараторы с точной логикой Java 
 #[derive(Debug)]
 struct MostTilesComparator;
 
 impl SolutionComparator for MostTilesComparator {
     fn compare(&self, a: &CutListSolution, b: &CutListSolution) -> Ordering {
-        // Максимальное количество плиток - лучше (Java: меньше получается при сортировке)
+        // Java: solution2.getNbrFinalTiles() - solution.getNbrFinalTiles()
+        // Больше плиток = лучше (возвращаем отрицательное для первого решения)
         let tiles_a = count_final_tiles(a);
         let tiles_b = count_final_tiles(b);
-        tiles_b.cmp(&tiles_a) // Обратную сортировку
+        tiles_b.cmp(&tiles_a) // Java: больше плиток лучше
     }
 }
 
@@ -27,10 +28,18 @@ struct LeastWastedAreaComparator;
 
 impl SolutionComparator for LeastWastedAreaComparator {
     fn compare(&self, a: &CutListSolution, b: &CutListSolution) -> Ordering {
-        // Минимальная потеря
+        // Java: long unusedArea = solution.getUnusedArea() - solution2.getUnusedArea();
+        // Меньше потерь = лучше
         let wasted_a = calculate_wasted_area(a);
         let wasted_b = calculate_wasted_area(b);
-        wasted_a.partial_cmp(&wasted_b).unwrap_or(Ordering::Equal)
+        
+        if wasted_a == wasted_b {
+            Ordering::Equal
+        } else if wasted_a > wasted_b {
+            Ordering::Greater  // a хуже (больше потерь)
+        } else {
+            Ordering::Less     // a лучше (меньше потерь)
+        }
     }
 }
 
@@ -39,10 +48,11 @@ struct LeastCutsComparator;
 
 impl SolutionComparator for LeastCutsComparator {
     fn compare(&self, a: &CutListSolution, b: &CutListSolution) -> Ordering {
-        // Минимальное количество резов
+        // Java: solution.getNbrCuts() - solution2.getNbrCuts()
+        // Меньше резов = лучше
         let cuts_a = count_cuts(a);
         let cuts_b = count_cuts(b);
-        cuts_a.cmp(&cuts_b)
+        cuts_a.cmp(&cuts_b) // Java: меньше резов лучше
     }
 }
 
@@ -51,10 +61,11 @@ struct LeastMosaicsComparator;
 
 impl SolutionComparator for LeastMosaicsComparator {
     fn compare(&self, a: &CutListSolution, b: &CutListSolution) -> Ordering {
-        // Минимальное количество мозаик (листов)
+        // Java: solution.getMosaics().size() - solution2.getMosaics().size()
+        // Меньше мозаик = лучше
         let mosaics_a = a.get_mosaics().len();
         let mosaics_b = b.get_mosaics().len();
-        mosaics_a.cmp(&mosaics_b)
+        mosaics_a.cmp(&mosaics_b) // Java: меньше мозаик лучше
     }
 }
 
@@ -63,10 +74,18 @@ struct BiggestUnusedTileAreaComparator;
 
 impl SolutionComparator for BiggestUnusedTileAreaComparator {
     fn compare(&self, a: &CutListSolution, b: &CutListSolution) -> Ordering {
-        // Максимальная неиспользованная площадь (предпочитаем больше)
+        // Java: long biggestArea = solution2.getBiggestArea() - solution.getBiggestArea();
+        // Больше неиспользованной площади = лучше
         let biggest_a = get_biggest_unused_area(a);
         let biggest_b = get_biggest_unused_area(b);
-        biggest_b.cmp(&biggest_a) // Обратный порядок - больше лучше
+        
+        if biggest_a == biggest_b {
+            Ordering::Equal
+        } else if biggest_b > biggest_a {
+            Ordering::Greater  // b лучше (больше неиспользованной площади)
+        } else {
+            Ordering::Less     // a лучше
+        }
     }
 }
 
@@ -75,29 +94,35 @@ struct MostDistinctTileSetComparator;
 
 impl SolutionComparator for MostDistinctTileSetComparator {
     fn compare(&self, a: &CutListSolution, b: &CutListSolution) -> Ordering {
-        // Максимальное количество различных типов плиток
+        // Java: solution.getDistictTileSet() - solution2.getDistictTileSet()
+        // ❌ ВНИМАНИЕ: Java имеет опечатку "Distict" вместо "Distinct"!
+        // Больше различных типов плиток = лучше (ascending order в Java)
         let distinct_a = get_distinct_tile_set_size(a);
         let distinct_b = get_distinct_tile_set_size(b);
-        distinct_b.cmp(&distinct_a) // Обратный порядок - больше лучше
+        distinct_a.cmp(&distinct_b) // Java: ascending order, больше = хуже в сортировке
     }
 }
 
-// Хелперы для подсчета метрик
-fn count_final_tiles(solution: &CutListSolution) -> usize {
+// ✅ ИСПРАВЛЕНО: Хелперы теперь точно соответствуют Java логике
+fn count_final_tiles(solution: &CutListSolution) -> i32 {
+    // Java: solution.getNbrFinalTiles()
     solution.get_mosaics().iter().map(|m| {
-        m.root_tile_node().final_tile_nodes().len()
+        m.root_tile_node().final_tile_nodes().len() as i32
     }).sum()
 }
 
-fn calculate_wasted_area(solution: &CutListSolution) -> f64 {
-    solution.get_mosaics().iter().map(|m| m.unused_area() as f64).sum()
+fn calculate_wasted_area(solution: &CutListSolution) -> u64 {
+    // Java: solution.getUnusedArea() возвращает long
+    solution.get_mosaics().iter().map(|m| m.unused_area()).sum()
 }
 
-fn count_cuts(solution: &CutListSolution) -> usize {
-    solution.get_mosaics().iter().map(|m| m.cuts().len()).sum()
+fn count_cuts(solution: &CutListSolution) -> i32 {
+    // Java: solution.getNbrCuts() возвращает int
+    solution.get_mosaics().iter().map(|m| m.cuts().len() as i32).sum()
 }
 
 fn get_biggest_unused_area(solution: &CutListSolution) -> u64 {
+    // Java: solution.getBiggestArea() возвращает long
     solution.get_mosaics().iter().map(|m| get_biggest_unused_area_in_mosaic(m)).max().unwrap_or(0)
 }
 
@@ -106,17 +131,15 @@ fn get_biggest_unused_area_in_mosaic(mosaic: &rezalnyas_core::models::mosaic::Mo
 }
 
 fn get_biggest_unused_area_in_tile_node(tile_node: &rezalnyas_core::models::tile_node::TileNode) -> u64 {
-    // Если это финальная плитка (занята), то площадь = 0
+    // Java логика для поиска наибольшей неиспользованной области
     if tile_node.is_final() {
-        return 0;
+        return 0; // Занятая плитка
     }
     
-    // Если у узла нет детей (пустое место), то возвращаем его площадь
     if tile_node.child1().is_none() && tile_node.child2().is_none() {
-        return (tile_node.width() as u64) * (tile_node.height() as u64);
+        return (tile_node.width() as u64) * (tile_node.height() as u64); // Пустая область
     }
     
-    // Рекурсивно проверяем детей
     let mut max_area = 0u64;
     if let Some(child1) = tile_node.child1() {
         max_area = max_area.max(get_biggest_unused_area_in_tile_node(child1));
@@ -128,8 +151,9 @@ fn get_biggest_unused_area_in_tile_node(tile_node: &rezalnyas_core::models::tile
     max_area
 }
 
-fn get_distinct_tile_set_size(solution: &CutListSolution) -> usize {
-    solution.get_mosaics().iter().map(|m| get_distinct_tile_set_in_mosaic(m)).max().unwrap_or(0)
+fn get_distinct_tile_set_size(solution: &CutListSolution) -> i32 {
+    // Java: solution.getDistictTileSet() - максимальное количество различных плиток в одной мозаике
+    solution.get_mosaics().iter().map(|m| get_distinct_tile_set_in_mosaic(m) as i32).max().unwrap_or(0)
 }
 
 fn get_distinct_tile_set_in_mosaic(mosaic: &rezalnyas_core::models::mosaic::Mosaic) -> usize {
@@ -140,7 +164,7 @@ fn get_distinct_tile_set_in_mosaic(mosaic: &rezalnyas_core::models::mosaic::Mosa
 
 fn collect_distinct_tiles(tile_node: &rezalnyas_core::models::tile_node::TileNode, distinct_tiles: &mut std::collections::HashSet<u32>) {
     if tile_node.is_final() {
-        // Создаем уникальный идентификатор плитки по размеру (как в Java)
+        // Java pairing function для создания уникального ID
         let width = tile_node.width();
         let height = tile_node.height();
         let i = width + height;
@@ -252,26 +276,32 @@ fn run_production_optimization() -> Result<(), Box<dyn std::error::Error>> {
     cut_list_thread.set_min_trim_dimension(0); // minTrimDimension = "0"
     cut_list_thread.set_consider_grain_direction(false); // considerOrientation = false
     
-    // КРИТИЧНО: Настраиваем компараторы точно как в Java для optimizationPriority = 0
-    // PriorityListFactory.java - для priority 0:
-    // arrayList.add(OptimizationPriority.MOST_TILES.toString());
-    // arrayList.add(OptimizationPriority.LEAST_WASTED_AREA.toString());
-    // arrayList.add(OptimizationPriority.LEAST_NBR_CUTS.toString());
-    // arrayList.add(OptimizationPriority.LEAST_NBR_MOSAICS.toString());
-    // arrayList.add(OptimizationPriority.BIGGEST_UNUSED_TILE_AREA.toString());
-    // arrayList.add(OptimizationPriority.MOST_HV_DISCREPANCY.toString());
+    // ✅ КРИТИЧНО: Полная Java последовательность для optimizationPriority = 0
+    // PriorityListFactory.java - точная копия для priority 0:
+    // 1. OptimizationPriority.MOST_TILES
+    // 2. OptimizationPriority.LEAST_WASTED_AREA  
+    // 3. OptimizationPriority.LEAST_NBR_CUTS
+    // 4. OptimizationPriority.LEAST_NBR_MOSAICS
+    // 5. OptimizationPriority.BIGGEST_UNUSED_TILE_AREA
+    // 6. OptimizationPriority.MOST_HV_DISCREPANCY
     
-    // УПРОЩЕННЫЕ компараторы - только основные 3 как изначально работало лучше
+    println!("RUST: Настраиваем компараторы в точной Java последовательности");
     let thread_comparators: Vec<Box<dyn SolutionComparator>> = vec![
-        Box::new(MostTilesComparator),
-        Box::new(LeastWastedAreaComparator),
-        Box::new(LeastCutsComparator),
+        Box::new(MostTilesComparator),              // 1. MOST_TILES
+        Box::new(LeastWastedAreaComparator),        // 2. LEAST_WASTED_AREA
+        Box::new(LeastCutsComparator),              // 3. LEAST_NBR_CUTS
+        Box::new(LeastMosaicsComparator),           // 4. LEAST_NBR_MOSAICS
+        Box::new(BiggestUnusedTileAreaComparator),  // 5. BIGGEST_UNUSED_TILE_AREA
+        Box::new(MostDistinctTileSetComparator),    // 6. MOST_HV_DISCREPANCY
     ];
     
     let final_comparators: Vec<Box<dyn SolutionComparator>> = vec![
-        Box::new(MostTilesComparator),
-        Box::new(LeastWastedAreaComparator), 
-        Box::new(LeastCutsComparator),
+        Box::new(MostTilesComparator),              // 1. MOST_TILES
+        Box::new(LeastWastedAreaComparator),        // 2. LEAST_WASTED_AREA
+        Box::new(LeastCutsComparator),              // 3. LEAST_NBR_CUTS
+        Box::new(LeastMosaicsComparator),           // 4. LEAST_NBR_MOSAICS
+        Box::new(BiggestUnusedTileAreaComparator),  // 5. BIGGEST_UNUSED_TILE_AREA
+        Box::new(MostDistinctTileSetComparator),    // 6. MOST_HV_DISCREPANCY
     ];
     
     cut_list_thread.set_thread_prioritized_comparators(thread_comparators);
