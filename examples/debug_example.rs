@@ -270,11 +270,19 @@ fn run_production_optimization() -> Result<(), Box<dyn std::error::Error>> {
     cut_list_thread.set_tiles(tiles);
     cut_list_thread.set_stock_solution(Some(stock_solution));
     
-    // Применяем конфигурацию точно как в Java
+    // ✅ КРИТИЧНО: Java настройки с правильным CutDirection
     cut_list_thread.set_accuracy_factor(20); // optimizationFactor = 2.0 -> accuracy_factor = 20 
     cut_list_thread.set_cut_thickness(0); // cutThickness = "0"
     cut_list_thread.set_min_trim_dimension(0); // minTrimDimension = "0"
     cut_list_thread.set_consider_grain_direction(false); // considerOrientation = false
+    
+    // ✅ ИСПРАВЛЕНО: Эмулируем Java многопоточную логику выбора резов  
+    // Java запускает 3 потока: AREA (BOTH), AREA_HCUTS_1ST (HORIZONTAL), AREA_VCUTS_1ST (VERTICAL)  
+    // Результат: Java предпочитает HORIZONTAL-first при равных результатах
+    // Устанавливаем приоритет горизонтальным резам как в Java AREA_HCUTS_1ST потоке
+    use rezalnyas_core::enums::CutOrientationPreference;
+    cut_list_thread.set_first_cut_orientation(CutOrientationPreference::Horizontal);
+    println!("RUST: Установлен приоритет горизонтальным резам (как в Java AREA_HCUTS_1ST)");
     
     // ✅ КРИТИЧНО: Полная Java последовательность для optimizationPriority = 0
     // PriorityListFactory.java - точная копия для priority 0:
@@ -312,28 +320,26 @@ fn run_production_optimization() -> Result<(), Box<dyn std::error::Error>> {
     
     let start_time = Instant::now();
     
-    // Запускаем оптимизацию
-    cut_list_thread.compute_solutions_java_style()?;
+    // ✅ ИСПРАВЛЕНО: Запускаем оптимизацию с множественными стратегиями как в Java
+    let best_solution = run_multiple_cutting_strategies(&mut cut_list_thread)?;
     
     let elapsed_time = start_time.elapsed();
     let total_seconds = elapsed_time.as_secs();
     
     println!("\n=== Задача выполнена за {} секунд! ===", total_seconds);
     
-    // Получаем решения и выводим результат точно как в Java
-    if let Ok(solutions) = cut_list_thread.get_all_solutions().lock() {
-        println!("RUST DEBUG: Всего решений найдено: {}", solutions.len());
-        if let Some(best_solution) = solutions.first() {
-            println!("RUST DEBUG: Лучшее решение содержит мозаик: {}", best_solution.get_mosaics().len());
-            for (i, mosaic) in best_solution.get_mosaics().iter().enumerate() {
-                println!("RUST DEBUG: Мозаика {}: used_area={}, unused_area={}, cuts={}", 
-                    i, mosaic.used_area(), mosaic.unused_area(), mosaic.cuts().len());
-            }
-            print_production_solution(best_solution, elapsed_time.as_millis());
-            generate_production_html_visualization_with_scale(best_solution, elapsed_time.as_millis(), scale_factor)?;
-        } else {
-            println!("Решение не найдено");
+    // Получаем лучшее решение из множественных стратегий
+    if let Some(solution) = best_solution {
+        println!("RUST DEBUG: Найдено лучшее решение из множественных стратегий");
+        println!("RUST DEBUG: Лучшее решение содержит мозаик: {}", solution.get_mosaics().len());
+        for (i, mosaic) in solution.get_mosaics().iter().enumerate() {
+            println!("RUST DEBUG: Мозаика {}: used_area={}, unused_area={}, cuts={}", 
+                i, mosaic.used_area(), mosaic.unused_area(), mosaic.cuts().len());
         }
+        print_production_solution(&solution, elapsed_time.as_millis());
+        generate_production_html_visualization_with_scale(&solution, elapsed_time.as_millis(), scale_factor)?;
+    } else {
+        println!("Решение не найдено");
     }
     
     Ok(())
@@ -426,6 +432,140 @@ fn print_production_solution(solution: &rezalnyas_core::models::cut_list_thread:
     } else {
         println!("\n=== Все детали размещены успешно! ===");
     }
+}
+
+/// ✅ НОВОЕ: Запуск множественных стратегий резки как в Java
+/// Эмулирует 3 Java потока: AREA (BOTH), AREA_HCUTS_1ST (HORIZONTAL), AREA_VCUTS_1ST (VERTICAL)
+fn run_multiple_cutting_strategies(base_thread: &mut CutListThread) -> Result<Option<CutListSolution>, Box<dyn std::error::Error>> {
+    use rezalnyas_core::enums::CutOrientationPreference;
+    
+    println!("RUST: Запускаем 3 стратегии резки как в Java:");
+    println!("  1. AREA (BOTH) - пробует оба направления");
+    println!("  2. AREA_HCUTS_1ST (HORIZONTAL) - приоритет горизонтальным резам");
+    println!("  3. AREA_VCUTS_1ST (VERTICAL) - приоритет вертикальным резам");
+    
+    let mut all_candidate_solutions = Vec::new();
+    
+    // СТРАТЕГИЯ 1: AREA (BOTH) - как в Java потоке "AREA"
+    println!("\nRUST: Запускаем стратегию AREA (BOTH)...");
+    let mut thread1 = clone_thread_for_strategy(base_thread, "AREA");
+    thread1.set_first_cut_orientation(CutOrientationPreference::Both);
+    
+    if let Err(e) = thread1.compute_solutions_java_style() {
+        println!("RUST WARNING: Стратегия AREA не сработала: {:?}", e);
+    } else {
+        if let Ok(solutions) = thread1.get_all_solutions().lock() {
+            if let Some(best) = solutions.first() {
+                println!("RUST: AREA дала решение с {} мозаиками, {} резами", 
+                         best.get_mosaics().len(), 
+                         best.get_mosaics().iter().map(|m| m.cuts().len()).sum::<usize>());
+                all_candidate_solutions.push(best.clone());
+            }
+        }
+    }
+
+    // СТРАТЕГИЯ 2: AREA_HCUTS_1ST (HORIZONTAL) - как в Java потоке "AREA_HCUTS_1ST"
+    println!("\nRUST: Запускаем стратегию AREA_HCUTS_1ST (HORIZONTAL)...");
+    let mut thread2 = clone_thread_for_strategy(base_thread, "AREA_HCUTS_1ST");
+    thread2.set_first_cut_orientation(CutOrientationPreference::Horizontal);
+    
+    if let Err(e) = thread2.compute_solutions_java_style() {
+        println!("RUST WARNING: Стратегия AREA_HCUTS_1ST не сработала: {:?}", e);
+    } else {
+        if let Ok(solutions) = thread2.get_all_solutions().lock() {
+            if let Some(best) = solutions.first() {
+                println!("RUST: AREA_HCUTS_1ST дала решение с {} мозаиками, {} резами", 
+                         best.get_mosaics().len(), 
+                         best.get_mosaics().iter().map(|m| m.cuts().len()).sum::<usize>());
+                all_candidate_solutions.push(best.clone());
+            }
+        }
+    }
+
+    // СТРАТЕГИЯ 3: AREA_VCUTS_1ST (VERTICAL) - как в Java потоке "AREA_VCUTS_1ST"
+    println!("\nRUST: Запускаем стратегию AREA_VCUTS_1ST (VERTICAL)...");
+    let mut thread3 = clone_thread_for_strategy(base_thread, "AREA_VCUTS_1ST");
+    thread3.set_first_cut_orientation(CutOrientationPreference::Vertical);
+    
+    if let Err(e) = thread3.compute_solutions_java_style() {
+        println!("RUST WARNING: Стратегия AREA_VCUTS_1ST не сработала: {:?}", e);
+    } else {
+        if let Ok(solutions) = thread3.get_all_solutions().lock() {
+            if let Some(best) = solutions.first() {
+                println!("RUST: AREA_VCUTS_1ST дала решение с {} мозаиками, {} резами", 
+                         best.get_mosaics().len(), 
+                         best.get_mosaics().iter().map(|m| m.cuts().len()).sum::<usize>());
+                all_candidate_solutions.push(best.clone());
+            }
+        }
+    }
+    
+    // Выбираем лучшее решение среди всех стратегий используя Java компараторы
+    if all_candidate_solutions.is_empty() {
+        println!("RUST ERROR: Ни одна стратегия не дала результата!");
+        return Ok(None);
+    }
+    
+    println!("\nRUST: Выбираем лучшее решение из {} кандидатов", all_candidate_solutions.len());
+    
+    // Сортируем используя те же компараторы что в базовом потоке
+    let thread_comparators = base_thread.get_final_solution_prioritized_comparators();
+    all_candidate_solutions.sort_by(|a, b| {
+        for comparator in thread_comparators.iter() {
+            let result = comparator.compare(a, b);
+            if result != std::cmp::Ordering::Equal {
+                return result;
+            }
+        }
+        std::cmp::Ordering::Equal
+    });
+    
+    let best_solution = all_candidate_solutions.into_iter().next();
+    if let Some(ref solution) = best_solution {
+        println!("RUST: Выбрано лучшее решение с {} мозаиками, {} неразмещенными панелями", 
+                 solution.get_mosaics().len(), 
+                 solution.get_no_fit_panels().len());
+    }
+    
+    Ok(best_solution)
+}
+
+/// Клонирует поток для новой стратегии
+fn clone_thread_for_strategy(base: &CutListThread, strategy_name: &str) -> CutListThread {
+    let mut new_thread = CutListThread::new();
+    
+    // Копируем основные настройки
+    new_thread.set_tiles(base.get_tiles().clone());
+    new_thread.set_stock_solution(base.get_stock_solution().cloned());
+    new_thread.set_accuracy_factor(base.get_accuracy_factor());
+    new_thread.set_cut_thickness(base.get_cut_thickness());
+    new_thread.set_min_trim_dimension(base.get_min_trim_dimension());
+    new_thread.set_consider_grain_direction(base.is_consider_grain_direction());
+    new_thread.set_group(Some(strategy_name.to_string()));
+    
+    // ✅ ИСПРАВЛЕНО: Копируем компараторы - создаем точные копии как в базовом потоке
+    let thread_comparators: Vec<Box<dyn SolutionComparator>> = vec![
+        Box::new(MostTilesComparator),              // 1. MOST_TILES
+        Box::new(LeastWastedAreaComparator),        // 2. LEAST_WASTED_AREA
+        Box::new(LeastCutsComparator),              // 3. LEAST_NBR_CUTS
+        Box::new(LeastMosaicsComparator),           // 4. LEAST_NBR_MOSAICS
+        Box::new(BiggestUnusedTileAreaComparator),  // 5. BIGGEST_UNUSED_TILE_AREA
+        Box::new(MostDistinctTileSetComparator),    // 6. MOST_HV_DISCREPANCY
+    ];
+    
+    let final_comparators: Vec<Box<dyn SolutionComparator>> = vec![
+        Box::new(MostTilesComparator),              // 1. MOST_TILES
+        Box::new(LeastWastedAreaComparator),        // 2. LEAST_WASTED_AREA
+        Box::new(LeastCutsComparator),              // 3. LEAST_NBR_CUTS
+        Box::new(LeastMosaicsComparator),           // 4. LEAST_NBR_MOSAICS
+        Box::new(BiggestUnusedTileAreaComparator),  // 5. BIGGEST_UNUSED_TILE_AREA
+        Box::new(MostDistinctTileSetComparator),    // 6. MOST_HV_DISCREPANCY
+    ];
+    
+    new_thread.set_thread_prioritized_comparators(thread_comparators);
+    new_thread.set_final_solution_prioritized_comparators(final_comparators);
+    
+    new_thread
 }
 
 /// Создание запроса - точная копия createRequest() из Java
