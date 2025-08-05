@@ -37,20 +37,29 @@ impl Placement {
 
     /// Попытка разместить панель
     /// Основная логика из computeSolutions() в CutListThread.java
-    pub fn try_place_panel(&mut self, panel: &Panel, cut_thickness: i32) -> bool {
-        // Сначала пробуем разместить панель в исходной ориентации
+    /// ВАЖНО: Java considerOrientation=false означает НЕ учитывать ориентацию (НЕ поворачивать панели)
+    pub fn try_place_panel(&mut self, panel: &Panel, cut_thickness: i32, consider_grain_direction: bool) -> bool {
+        // Пробуем сначала исходную ориентацию
         if self.try_place_panel_with_orientation(panel, cut_thickness) {
             return true;
         }
         
-        // Если панель не квадратная, пробуем повернуть на 90 градусов
-        if !panel.is_square() {
-            let rotated_panel = panel.rotate();
-            if self.try_place_panel_with_orientation(&rotated_panel, cut_thickness) {
-                return true;
-            }
+        // Если не получилось и разрешено поворачивать панели, пробуем повернутую ориентацию
+        // ✅ ИСПРАВЛЕНО: В Java considerOrientation=false означает НЕ поворачивать панели
+        if consider_grain_direction {
+            let rotated_panel = Panel {
+                id: panel.id,
+                width: panel.height, // Поворот на 90°
+                height: panel.width,
+                count: panel.count,
+                label: panel.label.clone(),
+                material: panel.material.clone(),
+            };
+            
+            return self.try_place_panel_with_orientation(&rotated_panel, cut_thickness);
         }
         
+        // Поворот запрещен, панель не поместилась
         false
     }
 
@@ -204,7 +213,7 @@ impl Placement {
 
     /// Попытка разместить список панелей в определенном порядке
     /// TODO: Основной цикл из computeSolutions()
-    pub fn try_place_panels(&mut self, panels: &[Panel], cut_thickness: i32) -> usize {
+    pub fn try_place_panels(&mut self, panels: &[Panel], cut_thickness: i32, consider_grain_direction: bool) -> usize {
         let mut placed_count = 0;
 
         for panel in panels {
@@ -212,14 +221,14 @@ impl Placement {
             // Взять логику из основного цикла computeSolutions()
 
             // Пробуем разместить панель как есть
-            if self.try_place_panel(panel, cut_thickness) {
+            if self.try_place_panel(panel, cut_thickness, consider_grain_direction) {
                 placed_count += 1;
                 continue;
             }
 
             // Пробуем повернуть и разместить
             // let rotated = panel.rotate();
-            // if self.try_place_panel(&rotated, cut_thickness) {
+            // if self.try_place_panel(&rotated, cut_thickness, consider_grain_direction) {
             //     placed_count += 1;
             //     continue;
             // }

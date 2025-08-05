@@ -13,7 +13,6 @@ impl PermutationGenerator {
     pub fn create_group_permutations(
         grouped_panels: &[GroupedTileDimensions]
     ) -> Vec<Vec<TileDimensions>> {
-        println!("=== Создание перестановок групп ===");
         
         // Шаг 1: Получаем уникальные группы с подсчетом (точная копия Java getDistinctGroupedTileDimensions)
         let distinct_groups = Self::get_distinct_grouped_tile_dimensions(grouped_panels);
@@ -28,11 +27,9 @@ impl PermutationGenerator {
             area_b.cmp(&area_a) // убывание
         });
         
-        println!("Уникальных групп найдено: {}", unique_groups.len());
         
         // Шаг 4: КЛЮЧЕВАЯ ОПТИМИЗАЦИЯ - ограничение до 7 групп (точная копия Java)
         let (groups_for_permutations, remaining_groups) = if unique_groups.len() > 7 {
-            println!("Ограничиваем перестановки до первых 7 групп из {}", unique_groups.len());
             let first_7 = unique_groups[0..7].to_vec();
             let remaining = unique_groups[7..].to_vec();
             (first_7, remaining)
@@ -41,7 +38,6 @@ impl PermutationGenerator {
         };
         
         // Шаг 5: Генерируем все перестановки первых 7 групп (точная копия Java Arrangement.generatePermutations)
-        println!("Генерация перестановок для {} групп...", groups_for_permutations.len());
         let mut group_permutations = Self::generate_permutations(groups_for_permutations);
         
         // Шаг 6: К каждой перестановке добавляем оставшиеся группы в исходном порядке (точная копия Java)
@@ -49,7 +45,6 @@ impl PermutationGenerator {
             permutation.extend(remaining_groups.clone());
         }
         
-        println!("Сгенерировано {} перестановок групп", group_permutations.len());
         
         // Шаг 7: Преобразуем перестановки групп в перестановки отдельных панелей 
         // (точная копия Java groupedTileDimensionsList2TileDimensionsList)
@@ -62,8 +57,6 @@ impl PermutationGenerator {
         let mut final_permutations = tile_permutations;
         let removed_count = Self::remove_duplicated_permutations(&mut final_permutations);
         
-        println!("Удалено дублирующих перестановок: {}", removed_count);
-        println!("Итоговое количество перестановок: {}", final_permutations.len());
         
         final_permutations
     }
@@ -170,25 +163,8 @@ impl PermutationGenerator {
     }
     
     /// Вывод статистики перестановок
-    pub fn print_permutation_stats(permutations: &[Vec<TileDimensions>]) {
-        println!("=== Статистика перестановок ===");
-        println!("Всего перестановок: {}", permutations.len());
-        
-        if !permutations.is_empty() {
-            println!("Панелей в каждой перестановке: {}", permutations[0].len());
-            
-            // Показываем первые несколько перестановок
-            for (i, permutation) in permutations.iter().take(3).enumerate() {
-                let signature: Vec<String> = permutation.iter()
-                    .map(|tile| format!("{}x{}", tile.width, tile.height))
-                    .collect();
-                println!("Перестановка {}: {}", i + 1, signature.join(","));
-            }
-            
-            if permutations.len() > 3 {
-                println!("... и еще {} перестановок", permutations.len() - 3);
-            }
-        }
+    pub fn print_permutation_stats(_permutations: &[Vec<TileDimensions>]) {
+        // Debug output removed to reduce verbosity
     }
 }
 
