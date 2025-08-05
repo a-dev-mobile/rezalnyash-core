@@ -72,11 +72,10 @@ impl PanelGrouper {
         }
 
         // Логирование статистики панелей
-        let mut sb = String::new();
+        let mut _sb = String::new();
         for (tile_type, count) in &tile_counts {
-            sb.push_str(&format!("{}*{} ", tile_type, count));
+            _sb.push_str(&format!("{}*{} ", tile_type, count));
         }
-        println!("TotalNbrTiles[{}] Tiles: {}", tiles.len(), sb);
 
         // Шаг 2: Определение порога для разбивки (iMax в Java)
         let mut max_group_size = std::cmp::max(tiles.len() / 100, 1);

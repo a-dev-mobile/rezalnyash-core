@@ -20,6 +20,9 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+// ✅ COMPARISON LOGS ONLY: Disable detailed debug logs for cleaner comparison output
+const ENABLE_DEBUG_LOGS: bool = false;
+
 /// Cut direction enum (replacement for Java CutDirection)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CutDirection {
@@ -496,7 +499,6 @@ impl CutListThread {
         }
 
         // 3. ОСНОВНОЙ ЦИКЛ - размещение каждой панели (как в Java)
-        println!("RUST DEBUG: Начинаем цикл обработки {} панелей", self.tiles.len());
         for (i, tile_dimensions) in self.tiles.iter().enumerate() {
             log_debug!("\n{}", "=".repeat(80));
             log_debug!(
@@ -534,7 +536,7 @@ impl CutListThread {
                     // ⭐ КЛЮЧЕВОЙ МЕТОД - добавление плитки в мозаику
                     let mut result_mosaics = Vec::new();
                     if let Err(e) = self.add_tile_to_mosaic(tile_dimensions, mosaic, &mut result_mosaics) {
-                        println!("RUST ERROR: Ошибка при добавлении плитки в мозаику: {:?}", e);
+                        eprintln!("RUST ERROR: Ошибка при добавлении плитки в мозаику: {:?}", e);
                         continue; // Пропускаем эту мозаику и пробуем следующую
                     }
 
@@ -574,7 +576,7 @@ impl CutListThread {
                             let new_mosaic = match self.create_mosaic_with_tile(unused_panel, tile_dimensions) {
                                 Ok(mosaic) => mosaic,
                                 Err(e) => {
-                                    println!("RUST ERROR: Ошибка при создании мозаики: {:?}", e);
+                                    eprintln!("RUST ERROR: Ошибка при создании мозаики: {:?}", e);
                                     continue; // Пробуем следующую панель
                                 }
                             };
@@ -622,16 +624,11 @@ impl CutListThread {
                 current_solutions.truncate(max_solutions);
             }
             
-            println!("RUST DEBUG: Панель {} обработана. Было решений: {}, стало решений: {}", 
-                i + 1, solutions_before, current_solutions.len());
         }
 
-        println!("RUST DEBUG: Цикл обработки панелей завершен, current_solutions: {}", current_solutions.len());
 
         // 12. Добавляем решения в глобальный список
-        println!("RUST DEBUG: Попытка заблокировать all_solutions, current_solutions: {}", current_solutions.len());
         if let Ok(mut all_solutions) = self.all_solutions.lock() {
-            println!("RUST DEBUG: all_solutions заблокирован, размер до добавления: {}", all_solutions.len());
             all_solutions.extend(current_solutions);
             self.sort_solutions(
                 &mut *all_solutions,
@@ -658,22 +655,12 @@ impl CutListThread {
 
             // Удаляем пустые мозаики
             if !all_solutions.is_empty() {
-                println!("RUST DEBUG ФИНАЛ: До удаления пустых мозаик:");
-                println!("  - Решений: {}", all_solutions.len());
-                println!("  - Мозаик в первом решении: {}", all_solutions[0].get_mosaics().len());
-                
-                for (i, mosaic) in all_solutions[0].get_mosaics().iter().enumerate() {
-                    println!("    Мозаика {}: used_area={}, cuts={}", 
-                        i, mosaic.used_area(), mosaic.cuts().len());
-                }
                 
                 // ВРЕМЕННО ОТКЛЮЧЕНО: НЕ УДАЛЯЕМ МОЗАИКИ
                 // all_solutions[0]
                 //     .get_mosaics_mut()
                 //     .retain(|mosaic| mosaic.used_area() > 0);
                     
-                println!("RUST DEBUG ФИНАЛ: После удаления пустых мозаик:");
-                println!("  - Мозаик в первом решении: {}", all_solutions[0].get_mosaics().len());
             }
         }
 
@@ -987,8 +974,6 @@ impl CutListThread {
         result_mosaics: &mut Vec<Mosaic>,
         cut_thickness: i32,
     ) {
-        println!("RUST DEBUG: fit_tile - поиск кандидатов для панели {}x{}", 
-                 tile_dimensions.width(), tile_dimensions.height());
         
         let mut candidates = Vec::new();
         self.find_candidates(
@@ -998,17 +983,12 @@ impl CutListThread {
             &mut candidates,
         );
 
-        println!("RUST DEBUG: Найдено {} кандидатов", candidates.len());
         
         for candidate in candidates {
-            println!("RUST DEBUG: Обрабатываем кандидата {}x{} vs панель {}x{}", 
-                     candidate.width(), candidate.height(),
-                     tile_dimensions.width(), tile_dimensions.height());
                      
             if candidate.width() == tile_dimensions.width() as i32
                 && candidate.height() == tile_dimensions.height() as i32
             {
-                println!("RUST DEBUG: Точное совпадение размеров!");
                 // Exact fit - точная копия Java логики
                 let tile_node_copy = TileNode::copy_tree(mosaic.root_tile_node(), Some(&candidate));
                 if let Some(found_tile) = tile_node_copy.find_tile(&candidate) {
@@ -1024,17 +1004,12 @@ impl CutListThread {
                     new_mosaic.set_stock_id(mosaic.stock_id());
                     new_mosaic.set_orientation(mosaic.orientation());
                     
-                    println!("RUST DEBUG: Создана мозаика с точным размещением");
                     result_mosaics.push(new_mosaic);
                 }
             } else {
-                println!("RUST DEBUG: Нужны разрезы - кандидат {}x{} больше панели {}x{}", 
-                         candidate.width(), candidate.height(),
-                         tile_dimensions.width(), tile_dimensions.height());
                          
                 // Need to cut - следуем Java логике CutDirection
                 if self.first_cut_orientation.allows_horizontal() {
-                    println!("RUST DEBUG: Пробуем горизонтальный разрез первым (HV)");
                     
                     let mut tile_node_copy = TileNode::copy_tree(mosaic.root_tile_node(), Some(&candidate));
                     if let Some(found_tile) = tile_node_copy.find_tile(&candidate) {
@@ -1052,16 +1027,14 @@ impl CutListThread {
                                 all_cuts.extend(cuts);
                                 new_mosaic.set_cuts(all_cuts);
                                 
-                                println!("RUST DEBUG: Создана мозаика с горизонтальными разрезами");
                                 result_mosaics.push(new_mosaic);
                             },
-                            Err(e) => println!("RUST DEBUG: Ошибка при HV разрезе: {:?}", e),
+                            Err(_e) => {}, // Error handled silently
                         }
                     }
                 }
 
                 if self.first_cut_orientation.allows_vertical() {
-                    println!("RUST DEBUG: Пробуем вертикальный разрез первым (VH)");
                     
                     let mut tile_node_copy = TileNode::copy_tree(mosaic.root_tile_node(), Some(&candidate));
                     if let Some(found_tile) = tile_node_copy.find_tile(&candidate) {
@@ -1079,17 +1052,15 @@ impl CutListThread {
                                 all_cuts.extend(cuts);
                                 new_mosaic.set_cuts(all_cuts);
                                 
-                                println!("RUST DEBUG: Создана мозаика с вертикальными разрезами");
                                 result_mosaics.push(new_mosaic);
                             },
-                            Err(e) => println!("RUST DEBUG: Ошибка при VH разрезе: {:?}", e),
+                            Err(_e) => {}, // Error handled silently
                         }
                     }
                 }
             }
         }
         
-        println!("RUST DEBUG: fit_tile завершен, создано {} новых мозаик", result_mosaics.len());
     }
 
 
@@ -1238,7 +1209,6 @@ impl CutListThread {
                     if let Ok(task_guard) = task.lock() {
                         // task_guard.set_min_trim_dimension_influenced(true);
                         // For now, we'll just log this condition
-                        println!("RUST: Min trim dimension influenced by width");
                     }
                 }
             }
@@ -1251,7 +1221,6 @@ impl CutListThread {
                     if let Ok(task_guard) = task.lock() {
                         // task_guard.set_min_trim_dimension_influenced(true);
                         // For now, we'll just log this condition
-                        println!("RUST: Min trim dimension influenced by height");
                     }
                 }
             }
@@ -1443,17 +1412,12 @@ impl CutListThread {
 
     /// Java-compatible computeSolutions method that exactly mirrors the Java algorithm
     pub fn compute_solutions_java_style(&mut self) -> Result<()> {
-        println!("RUST НАЧАЛО: === compute_solutions_java_style() ===");
         
         // ЭТАП 1: Создание начального решения
-        println!("RUST ЭТАП 1: === Создание начального решения ===");
         let mut current_solutions = Vec::new();
         
         if let Some(stock_solution) = &self.stock_solution {
-            println!("RUST: current_solutions.push(Solution::new(stock_solution));");
             current_solutions.push(Solution::new(stock_solution));
-            println!("RUST ЭТАП 1 ЗАВЕРШЕН: Создано решение с {} решениями", current_solutions.len());
-            println!("RUST: Первое решение содержит {} мозаик", current_solutions[0].get_mosaics().len());
         } else {
             return Err(AppError::Core(CoreError::Internal {
                 message: "No stock solution available".to_string(),
@@ -1468,15 +1432,11 @@ impl CutListThread {
         };
 
         if task_is_running {
-            println!("RUST: Task is running, начинаем обработку {} панелей", self.tiles.len());
             
             // ЭТАП 2: Обработка каждой панели
             for (i, tile_dimensions) in self.tiles.iter().enumerate() {
                 let panel_index = i + 1;
                 println!("\n{}", "=".repeat(80));
-                println!("RUST ЭТАП 2: === Размещение панели {} из {} ===", panel_index, self.tiles.len());
-                println!("RUST аналог Java: place_single_tile()");
-                println!("RUST: Панель {}x{}, ID: {}", tile_dimensions.width(), tile_dimensions.height(), tile_dimensions.id());
 
                 // Обновляем прогресс каждые 3 панели
                 if panel_index % 3 == 0 {
@@ -1490,25 +1450,17 @@ impl CutListThread {
                     let mut placement_found = false;
                     
                     // Пробуем разместить панель в каждой мозаике решения
-                    println!("RUST DEBUG: В решении {} мозаик", solution.get_mosaics().len());
                     for (mosaic_index, mosaic) in solution.get_mosaics().iter().enumerate() {
-                        println!("RUST DEBUG: Проверяем мозаику {} (материал: {}, размер: {}x{})", 
-                                 mosaic_index, mosaic.material(), 
-                                 mosaic.root_tile_node().width(), mosaic.root_tile_node().height());
                         
                         // Проверяем совместимость материала
                         if mosaic.material() != tile_dimensions.material() {
-                            println!("RUST DEBUG: Материалы не совпадают: мозаика='{}' vs панель='{}'", 
-                                     mosaic.material(), tile_dimensions.material());
                             continue;
                         }
 
-                        println!("RUST DEBUG: Материалы совпадают, пытаемся разместить в мозаике {}", mosaic_index);
                         
                         // Пытаемся разместить панель в этой мозаике
                         let mut result_mosaics = Vec::new();
                         if let Ok(_) = self.add_tile_to_mosaic_java_style(tile_dimensions, mosaic, &mut result_mosaics) {
-                            println!("RUST DEBUG: add_tile_to_mosaic_java_style вернул {} вариантов размещения", result_mosaics.len());
                             // ИСПРАВЛЕНИЕ: Как в Java - выбираем ЛУЧШИЙ вариант размещения
                             // Java приоритеты: 1) Больше панелей, 2) Меньше потерь, 3) Меньше резов
                             if let Some(best_mosaic) = result_mosaics.iter()
@@ -1532,8 +1484,6 @@ impl CutListThread {
                                     b.cuts().len().cmp(&a.cuts().len())
                                 }) {
                                 
-                                println!("RUST DEBUG: Выбран лучший вариант с {} резами из {} вариантов", 
-                                         best_mosaic.cuts().len(), result_mosaics.len());
                                 
                                 // ИСПРАВЛЕНО: Заменяем мозаику вместо удаления и добавления
                                 let mut new_solution = solution.clone();
@@ -1550,7 +1500,6 @@ impl CutListThread {
                     // Если не удалось разместить в существующих мозаиках, пробуем создать новую
                     if !placement_found {
                         if let Some(unused_stock) = self.find_suitable_unused_stock(solution, tile_dimensions) {
-                            println!("RUST: Лист подходит для панели");
                             // Создаем новую мозаику из неиспользованного запаса
                             let mut new_solution = solution.clone();
                             if let Some(pos) = new_solution.unused_stock_panels.iter().position(|s| s == &unused_stock) {
@@ -1591,7 +1540,6 @@ impl CutListThread {
                                 }
                             }
                         } else {
-                            println!("RUST: Лист НЕ подходит для панели");
                         }
                     }
 
@@ -1604,17 +1552,13 @@ impl CutListThread {
                 }
 
                 // Заменяем текущие решения новыми
-                println!("RUST DEBUG: Панель {} обработана. Было решений: {}, стало решений: {}", 
-                         panel_index, current_solutions.len(), new_solutions.len());
                 current_solutions = new_solutions;
                 
                 // Выводим статистику по первому решению
                 if !current_solutions.is_empty() {
                     let first_solution = &current_solutions[0];
-                    println!("RUST DEBUG: Первое решение теперь содержит {} мозаик", first_solution.get_mosaics().len());
                     if !first_solution.get_mosaics().is_empty() {
                         let first_mosaic = &first_solution.get_mosaics()[0];
-                        println!("RUST DEBUG: Первая мозаика содержит {} резов", first_mosaic.cuts().len());
                     }
                 }
 
@@ -1684,8 +1628,9 @@ impl CutListThread {
             // Размещаем без поворота
             self.fit_tile_java_style(tile_dimensions, mosaic, result_mosaics)?;
             
-            // Размещаем с поворотом (если не квадратная)
-            if !tile_dimensions.is_square() {
+            // ✅ ИСПРАВЛЕНО: Размещаем с поворотом если consider_grain_direction=false
+            // В Java considerOrientation=false означает разрешить поворачивать панели
+            if !self.consider_grain_direction && !tile_dimensions.is_square() {
                 let rotated = tile_dimensions.rotate_90();
                 self.fit_tile_java_style(&rotated, mosaic, result_mosaics)?;
             }
