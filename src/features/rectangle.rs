@@ -25,4 +25,14 @@ impl Rectangle {
     pub fn fits(&self, other: &Rectangle) -> bool {
         self.width >= other.width && self.height >= other.height
     }
+    
+    /// ✅ Добавлено для Java-совместимости: правая граница (x + width)
+    pub fn x2(&self) -> i32 {
+        self.x + self.width
+    }
+    
+    /// ✅ Добавлено для Java-совместимости: нижняя граница (y + height)
+    pub fn y2(&self) -> i32 {
+        self.y + self.height
+    }
 }
