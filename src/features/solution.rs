@@ -59,22 +59,42 @@ impl Solution {
         };
     }
 
-    /// Оценка качества решения для сортировки
-    /// TODO: Взять приоритеты из SolutionComparatorFactory.java
-    pub fn score(&self) -> (i32, i64, i32) {
-        // Приоритет 1: Максимум размещенных панелей (отрицательное для сортировки по убыванию)
-        let placed_panels = -(self
-            .placements
-            .iter()
-            .map(|p| p.placed_panels.len() as i32)
-            .sum::<i32>());
-
-        // Приоритет 2: Минимум отходов
-        let waste_area = self.total_waste_area;
-
-        // Приоритет 3: Минимум резов
-        let cuts_count = self.total_cuts as i32;
-
-        (placed_panels, waste_area, cuts_count)
+    /// ✅ ТОЧНАЯ КОПИЯ JAVA: getNbrCuts() из Solution.java
+    pub fn get_nbr_cuts(&self) -> i32 {
+        self.placements.iter()
+            .map(|placement| placement.cuts.len() as i32)
+            .sum()
+    }
+    
+    /// ✅ ТОЧНАЯ КОПИЯ JAVA: getNbrUnusedTiles() из Solution.java  
+    pub fn get_nbr_unused_tiles(&self) -> i32 {
+        self.placements.iter()
+            .map(|placement| placement.root_node.get_unused_tiles_count())
+            .sum()
+    }
+    
+    /// ✅ ТОЧНАЯ КОПИЯ JAVA: getBiggestArea() из Solution.java
+    pub fn get_biggest_area(&self) -> i64 {
+        self.placements.iter()
+            .map(|placement| placement.root_node.get_biggest_unused_area())
+            .max()
+            .unwrap_or(0)
+    }
+    
+    /// ✅ ТОЧНАЯ КОПИЯ JAVA: количество мозаик (листов)
+    pub fn get_nbr_mosaics(&self) -> i32 {
+        self.placements.len() as i32
+    }
+    
+    /// ✅ ТОЧНАЯ КОПИЯ JAVA: количество размещенных панелей
+    pub fn get_nbr_tiles(&self) -> i32 {
+        self.placements.iter()
+            .map(|placement| placement.placed_panels.len() as i32)
+            .sum()
+    }
+    
+    /// ✅ ТОЧНАЯ КОПИЯ JAVA: общая потерянная площадь
+    pub fn get_wasted_area(&self) -> i64 {
+        self.total_waste_area
     }
 }
