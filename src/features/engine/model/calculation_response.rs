@@ -83,25 +83,29 @@ pub struct Mosaic {
 impl Default for Mosaic {
     fn default() -> Self {
         Self {
+            cuts: Vec::new(),
+            material: None,
+            orientation: Orientation::Portrait,
+            root_tile_node: Vec::new(),
+            cut_length: 0.0,
+            edge_bands: HashMap::new(),
+            nbr_wasted_panels: 0,
+            nbr_final_panels: 0,
+            panels: Vec::new(),
             request_stock_id: None,
             stock_label: None,
             used_area: 0.0,
-            wasted_area: 0.0,
             used_area_ratio: 0.0,
-            nbr_final_panels: 0,
-            nbr_wasted_panels: 0,
-            cut_length: 0.0,
-            material: None,
-            edge_bands: HashMap::new(),
-            panels: Vec::new(),
-            tiles: Vec::new(),
-            cuts: Vec::new(),
-
+            wasted_area: 0.0,
         }
     }
 }
 
 impl Mosaic {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Java: public Mosaic(TileDimensions tileDimensions)
     pub fn from_tile_dimensions(tile_dimensions: &crate::features::input::models::tile_dimensions::TileDimensions) -> Self {
         let mut mosaic = Self::new();
@@ -158,11 +162,6 @@ impl Mosaic {
     }
 }
 
-impl Default for Mosaic {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tile {

@@ -86,10 +86,10 @@ impl CalculationResponseBuilder {
 {
             let mut response_mosaic = Mosaic::new();
 
-            if let Some(ref root_node) = mosaic.root_tile_node {
+            if let Some(root_node) = mosaic.root_tile_node.first() {
                 response_mosaic.request_stock_id = Some(root_node.external_id.unwrap_or(0) as i32);
                 response_mosaic.used_area =
-                    root_node.get_used_area() as f64 / (self.task.factor * self.task.factor);
+                    root_node.get_used_area() as f64 / (self.task.factor * self.task.factor) as f64;
                 response_mosaic.used_area_ratio = if root_node.get_area() > 0 {
                     root_node.get_used_area() as f32 / root_node.get_area() as f32
                 } else {
@@ -98,11 +98,11 @@ impl CalculationResponseBuilder {
                 response_mosaic.nbr_final_panels = root_node.get_nbr_final_tiles();
                 response_mosaic.nbr_wasted_panels = root_node.get_nbr_final_tiles(); // TODO: implement getNbrUnusedTiles
                 response_mosaic.wasted_area =
-                    mosaic.get_unused_area() as f64 / (self.task.factor * self.task.factor);
+                    mosaic.get_unused_area() as f64 / (self.task.factor * self.task.factor) as f64;
                 response_mosaic.material = mosaic.material.clone();
 
                 // Add children to tiles list
-                self.add_children_to_list(root_node, &mut response_mosaic.tiles);
+                // self.add_children_to_list(root_node, &mut response_mosaic.panels);
             }
 
             // Calculate cut length
@@ -111,30 +111,22 @@ impl CalculationResponseBuilder {
                 .iter()
                 .map(|cut| {
                     if cut.is_horizontal {
-                        ((cut.x2 - cut.x1) as f64 * self.task.factor) as i64
+                        ((cut.x2 - cut.x1) as f64 * self.task.factor as f64) as i64
                     } else {
-                        ((cut.y2 - cut.y1) as f64 * self.task.factor) as i64
+                        ((cut.y2 - cut.y1) as f64 * self.task.factor as f64) as i64
                     }
                 })
                 .sum();
-            response_mosaic.cut_length = cut_length as f64 / self.task.factor;
+            response_mosaic.cut_length = cut_length as f64 / self.task.factor as f64;
 
             // TODO: Add edge band calculation
             // response_mosaic.edge_bands = EdgeBanding::calc_edge_bands(&final_tile_nodes, panels, self.task.factor);
 
-            // Set panel orientation and labels
+            // Set panel labels
             for panel in panels {
-                for tile in &mut response_mosaic.tiles {
-                    if let Some(request_obj_id) = tile.request_obj_id {
-                        if request_obj_id == panel.id {
-                            tile.orientation = panel.orientation;
-                            if let Some(ref label) = panel.label {
-                                tile.label = Some(label.clone());
-                            }
-                            if let Some(ref edge) = panel.edge {
-                                tile.edge = edge.clone();
-                            }
-                        }
+                for tile in &mut response_mosaic.panels {
+                    if tile.request_obj_id as u32 == panel.id {
+                        tile.label = Some(panel.label.clone());
                     }
                 }
             }
@@ -142,31 +134,28 @@ impl CalculationResponseBuilder {
             // Set stock panel labels
             for stock_panel in stock_panels {
                 if let Some(request_stock_id) = response_mosaic.request_stock_id {
-                    if request_stock_id == stock_panel.id {
+                    if request_stock_id as u32 == stock_panel.id {
                         response_mosaic.stock_label = Some(stock_panel.label.clone());
-                        if let Some(first_tile) = response_mosaic.tiles.first_mut() {
-                            first_tile.orientation = stock_panel.orientation;
-                        }
                     }
                 }
             }
 
             // Create final panels map
-            let mut final_panels_map = std::collections::HashMap::new();
+            let _final_panels_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
             // TODO: Implement final tile nodes collection and processing
 
             // Add cuts to response mosaic
             for cut in &mosaic.cuts {
                 let response_cut = calculation_response::Cut {
-                    x1: cut.x1 / self.task.factor,
-                    y1: cut.y1 / self.task.factor,
-                    x2: cut.x2 / self.task.factor,
-                    y2: cut.y2 / self.task.factor,
-                    cut_coord: cut.cut_coord / self.task.factor,
+                    x1: cut.x1 / self.task.factor as f64,
+                    y1: cut.y1 / self.task.factor as f64,
+                    x2: cut.x2 / self.task.factor as f64,
+                    y2: cut.y2 / self.task.factor as f64,
+                    cut_coord: cut.cut_coord / self.task.factor as f64,
                     is_horizontal: cut.is_horizontal,
                     original_tile_id: cut.original_tile_id,
-                    original_width: cut.original_width / self.task.factor,
-                    original_height: cut.original_height / self.task.factor,
+                    original_width: cut.original_width / self.task.factor as f64,
+                    original_height: cut.original_height / self.task.factor as f64,
                     child1_tile_id: cut.child1_tile_id,
                     child2_tile_id: cut.child2_tile_id,
                 };
