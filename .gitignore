@@ -1,50 +1,11 @@
-# Compiled class files
-*.class
+/target
+directory_structure.log
 
-# Build directories
-build/
-target/
-out/
 
-# IDE files
-.idea/
-*.iml
-*.ipr
-*.iws
-
-# VSCode settings (optional - можно закомментировать если нужно сохранить настройки)
-# .vscode/
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Java specific
-*.jar
-*.war
-*.ear
-*.zip
-*.tar.gz
-*.rar
-
-# Log files
-*.log
-
-# Temporary files
-*.tmp
-*.temp
-*~
-
-# Package files
-*.7z
-*.dmg
-*.gz
-*.iso
-*.tar
-*.zip
-cutting_result.html
+*.html
+.vscode/*
+Makefile
+Java/**
+*.json
+output.log
+README.md

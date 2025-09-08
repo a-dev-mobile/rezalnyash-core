@@ -2,51 +2,21 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "java",
-            "name": "Debug API Server",
+            "type": "lldb",
             "request": "launch",
-            "mainClass": "com.example.debug.api.ApiServer",
-           
-            "console": "integratedTerminal",
-            "args": [],
-            "env": {
-                "JAVA_OPTS": "-Xms512m -Xmx1024m"
+            "name": "Debug example example",
+            "cargo": {
+                "args": [
+                    "run",
+                    "--example=example"
+                ],
+                "filter": {
+                    "name": "example",
+                    "kind": "example"
+                }
             },
-            "preLaunchTask": "compile-java"
-        },
-        {
-            "type": "java",
-            "name": "Debug DebugExample",
-            "request": "launch",
-            "mainClass": "com.example.debug.DebugExample",
-            "classpath": [
-                "lib/*",
-                "src/main/java",
-                "build"
-            ],
-            "console": "integratedTerminal",
-            "args": []
-        },
-      {
-            "type": "java",
-            "name": "Debug Example",
-            "request": "launch",
-            "mainClass": "com.example.debug.Example",
-            "classpath": [
-                "lib/*",
-                "src/main/java",
-                "build"
-            ],
-            "console": "integratedTerminal",
-            "args": []
-        },
-        {
-            "type": "java",
-            "name": "Attach to API Server",
-            "request": "attach",
-            "hostName": "localhost",
-            "port": 5005,
-            "timeout": 30000
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
