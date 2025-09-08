@@ -3,6 +3,7 @@
 package com.example.debug.api;
 
 import com.example.debug.api.dto.*;
+import java.util.stream.Collectors;
 import com.example.debug.engine.CutListOptimizerService;
 import com.example.debug.engine.model.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,11 +61,6 @@ public class CuttingOptimizationController {
         server.start();
         
         System.out.println("API Server started on port " + port);
-        System.out.println("Available endpoints:");
-        System.out.println("  POST /api/tasks/optimize - Submit optimization task");
-        System.out.println("  GET  /api/tasks/status/{taskId} - Get task status");
-        System.out.println("  POST /api/tasks/stop/{taskId} - Stop task");
-        System.out.println("  GET  /api/tasks/stats - Get service statistics");
     }
     
     public void stop() {
@@ -97,7 +93,7 @@ public class CuttingOptimizationController {
                 OptimizeResponse response = new OptimizeResponse(taskId, "SUBMITTED");
                 sendResponse(exchange, 200, new ApiResponse("success", "Task submitted successfully", response));
             } else {
-                String errorMsg = "Error: " + result.getStatusCode();
+                String errorMsg = getErrorMessage(result.getStatusCode());
                 sendResponse(exchange, 400, new ApiResponse("error", errorMsg, null));
             }
             
@@ -162,7 +158,7 @@ public class CuttingOptimizationController {
             sendResponse(exchange, 405, new ApiResponse("error", "Method not allowed", null));
             return;
         }
-        
+        System.out.println("Received stats request");
         try {
             Stats stats = optimizerService.getStats();
             StatsDto response = convertToStatsDto(stats);
@@ -284,13 +280,22 @@ public class CuttingOptimizationController {
         SolutionDto solution = null;
         if (status.getSolution() != null) {
             CalculationResponse calcResponse = status.getSolution();
+            
+            List<MosaicDto> mosaics = null;
+            if (calcResponse.getMosaics() != null) {
+                mosaics = calcResponse.getMosaics().stream()
+                    .map(this::convertToMosaicDto)
+                    .collect(Collectors.toList());
+            }
+            
             solution = new SolutionDto(
                 calcResponse.getTotalUsedArea(),
                 calcResponse.getTotalWastedArea(),
                 calcResponse.getTotalUsedAreaRatio() * 100,
                 (int)calcResponse.getTotalNbrCuts(),
                 calcResponse.getTotalCutLength(),
-                calcResponse.getElapsedTime()
+                calcResponse.getElapsedTime(),
+                mosaics
             );
         }
         
@@ -312,15 +317,76 @@ public class CuttingOptimizationController {
         );
     }
     
-    private String getErrorMessage(CutListOptimizerService.StatusCode statusCode) {
+    private MosaicDto convertToMosaicDto(CalculationResponse.Mosaic mosaic) {
+        List<TileDto> tiles = null;
+        if (mosaic.getTiles() != null) {
+            tiles = mosaic.getTiles().stream()
+                .map(this::convertToTileDto)
+                .collect(Collectors.toList());
+        }
+        
+        List<CutDto> cuts = null;
+        if (mosaic.getCuts() != null) {
+            cuts = mosaic.getCuts().stream()
+                .map(this::convertToCutDto)
+                .collect(Collectors.toList());
+        }
+        
+        return new MosaicDto(
+            mosaic.getStockLabel(),
+            mosaic.getUsedArea(),
+            mosaic.getWastedArea(),
+            mosaic.getUsedAreaRatio(),
+            mosaic.getNbrFinalPanels(),
+            mosaic.getNbrWastedPanels(),
+            mosaic.getCutLength(),
+            mosaic.getMaterial(),
+            tiles,
+            cuts
+        );
+    }
+    
+    private TileDto convertToTileDto(CalculationResponse.Tile tile) {
+        return new TileDto(
+            tile.getId(),
+            tile.getRequestObjId(),
+            tile.getX(),
+            tile.getY(),
+            tile.getWidth(),
+            tile.getHeight(),
+            tile.getOrientation(),
+            tile.getLabel(),
+            tile.isFinal(),
+            tile.isHasChildren(),
+            tile.isRotated()
+        );
+    }
+    
+    private CutDto convertToCutDto(CalculationResponse.Cut cut) {
+        return new CutDto(
+            cut.getX1(),
+            cut.getY1(),
+            cut.getX2(),
+            cut.getY2(),
+            cut.getCutCoord(),
+            cut.isHorizontal(),
+            cut.getOriginalTileId(),
+            cut.getOriginalWidth(),
+            cut.getOriginalHeight(),
+            cut.getChild1TileId(),
+            cut.getChild2TileId()
+        );
+    }
+    
+    private String getErrorMessage(String statusCode) {
         switch (statusCode) {
-            case INVALID_TILES: return "Invalid panels provided";
-            case INVALID_STOCK_TILES: return "Invalid stock panels provided";
-            case TASK_ALREADY_RUNNING: return "Task already running for this client";
-            case SERVER_UNAVAILABLE: return "Server is unavailable";
-            case TOO_MANY_PANELS: return "Too many panels in request";
-            case TOO_MANY_STOCK_PANELS: return "Too many stock panels in request";
-            default: return "Unknown error occurred";
+            case "1": return "Invalid panels provided";
+            case "2": return "Invalid stock panels provided"; 
+            case "3": return "Task already running for this client";
+            case "4": return "Server is unavailable";
+            case "5": return "Too many panels in request";
+            case "6": return "Too many stock panels in request";
+            default: return "Error: " + statusCode;
         }
     }
     

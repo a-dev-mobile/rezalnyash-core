@@ -1,5 +1,7 @@
 package com.example.debug.api.dto;
 
+import java.util.List;
+
 public class SolutionDto {
     private double usedArea;
     private double wastedArea;
@@ -7,6 +9,7 @@ public class SolutionDto {
     private int cutCount;
     private double cutLength;
     private long executionTimeMillis;
+    private List<MosaicDto> mosaics;
     
     public SolutionDto() {}
     
@@ -18,6 +21,17 @@ public class SolutionDto {
         this.cutCount = cutCount;
         this.cutLength = cutLength;
         this.executionTimeMillis = executionTimeMillis;
+    }
+    
+    public SolutionDto(double usedArea, double wastedArea, double usageRate, 
+                      int cutCount, double cutLength, long executionTimeMillis, List<MosaicDto> mosaics) {
+        this.usedArea = usedArea;
+        this.wastedArea = wastedArea;
+        this.usageRate = usageRate;
+        this.cutCount = cutCount;
+        this.cutLength = cutLength;
+        this.executionTimeMillis = executionTimeMillis;
+        this.mosaics = mosaics;
     }
     
     public double getUsedArea() { return usedArea; }
@@ -37,4 +51,7 @@ public class SolutionDto {
     
     public long getExecutionTimeMillis() { return executionTimeMillis; }
     public void setExecutionTimeMillis(long executionTimeMillis) { this.executionTimeMillis = executionTimeMillis; }
+    
+    public List<MosaicDto> getMosaics() { return mosaics; }
+    public void setMosaics(List<MosaicDto> mosaics) { this.mosaics = mosaics; }
 }

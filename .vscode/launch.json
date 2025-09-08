@@ -3,10 +3,27 @@
     "configurations": [
         {
             "type": "java",
+            "name": "Debug API Server",
+            "request": "launch",
+            "mainClass": "com.example.debug.api.ApiServer",
+           
+            "console": "integratedTerminal",
+            "args": [],
+            "env": {
+                "JAVA_OPTS": "-Xms512m -Xmx1024m"
+            },
+            "preLaunchTask": "compile-java"
+        },
+        {
+            "type": "java",
             "name": "Debug DebugExample",
             "request": "launch",
             "mainClass": "com.example.debug.DebugExample",
-
+            "classpath": [
+                "lib/*",
+                "src/main/java",
+                "build"
+            ],
             "console": "integratedTerminal",
             "args": []
         },
@@ -15,9 +32,21 @@
             "name": "Debug Example",
             "request": "launch",
             "mainClass": "com.example.debug.Example",
-
+            "classpath": [
+                "lib/*",
+                "src/main/java",
+                "build"
+            ],
             "console": "integratedTerminal",
             "args": []
         },
+        {
+            "type": "java",
+            "name": "Attach to API Server",
+            "request": "attach",
+            "hostName": "localhost",
+            "port": 5005,
+            "timeout": 30000
+        }
     ]
 }

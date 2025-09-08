@@ -632,13 +632,23 @@ public class CutListOptimizerServiceImpl implements CutListOptimizerService {
                 logger.debug("Starting permutationIdx[" + i + "/" + list2.size() + "] with stock solution [" + i4 + "] {nbrPanels[" + stockSolution.getStockTileDimensions().size() + "] area[" + stockSolution.getTotalArea() + "] " + stockSolution.toString() + "}");
                 List<Comparator> solutionComparatorList = SolutionComparatorFactory.getSolutionComparatorList(PriorityListFactory.getFinalSolutionPrioritizedComparatorList(configuration));
                 try {
-                    iRound = (int) Math.round(Double.parseDouble(configuration.getCutThickness()) * task.getFactor());
+                    String cutThicknessStr = configuration.getCutThickness();
+                    if (cutThicknessStr != null && !cutThicknessStr.trim().isEmpty()) {
+                        iRound = (int) Math.round(Double.parseDouble(cutThicknessStr) * task.getFactor());
+                    } else {
+                        iRound = 0;
+                    }
                 } catch (Exception unused) {
                     logger.error("Error parsing cut thickness value: [" + configuration.getCutThickness() + "]");
                     iRound = 0;
                 }
                 try {
-                    iRound2 = (int) Math.round(Double.parseDouble(configuration.getMinTrimDimension()) * task.getFactor());
+                    String minTrimStr = configuration.getMinTrimDimension();
+                    if (minTrimStr != null && !minTrimStr.trim().isEmpty()) {
+                        iRound2 = (int) Math.round(Double.parseDouble(minTrimStr) * task.getFactor());
+                    } else {
+                        iRound2 = 0;
+                    }
                 } catch (Exception unused2) {
                     logger.error("Error parsing minimum trim dimension value: [" + configuration.getMinTrimDimension() + "]");
                     iRound2 = 0;
